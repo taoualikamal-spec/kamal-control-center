@@ -1,0 +1,12 @@
+{
+  "name": "Kamal Control Center",
+  "short_name": "Kamal CC",
+  "description": "Private envelope money, time, and consistency tracker.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#08111f",
+  "theme_color": "#0b1325",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
