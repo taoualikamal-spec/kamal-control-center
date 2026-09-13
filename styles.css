@@ -255,3 +255,47 @@ td strong { color: var(--text); }
   .panel { padding: 16px; }
   .bottom-nav { bottom: max(8px, env(safe-area-inset-bottom)); }
 }
+
+/* Dark mode keeps the same hierarchy and contrast, without restoring the old decorative look. */
+html[data-theme="dark"] {
+  --bg: #0f171d;
+  --surface: #17242b;
+  --surface-2: #17242b;
+  --surface-3: #20343d;
+  --line: #304852;
+  --text: #eef5f2;
+  --muted: #b0c0bb;
+  --quiet: #849994;
+  --green: #68d5a5;
+  --blue: #8abaff;
+  --yellow: #f3c86f;
+  --red: #ff929d;
+  --purple: #c7aaff;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .24), 0 10px 25px rgba(0, 0, 0, .16);
+}
+html[data-theme="dark"] body { background: #0f171d; }
+html[data-theme="dark"] .topbar { background: rgba(15, 23, 29, .96); }
+html[data-theme="dark"] .privacy-pill,
+html[data-theme="dark"] .icon-button,
+html[data-theme="dark"] .metric-card,
+html[data-theme="dark"] .panel,
+html[data-theme="dark"] .envelope-card { background: #17242b; }
+html[data-theme="dark"] .secondary-button,
+html[data-theme="dark"] .file-button { background: #20343d; color: var(--text); }
+html[data-theme="dark"] input,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea { background: #101b21; color: var(--text); border-color: #3b5660; }
+html[data-theme="dark"] .split-preview,
+html[data-theme="dark"] .habit-item,
+html[data-theme="dark"] .compact-habit,
+html[data-theme="dark"] .streak-card,
+html[data-theme="dark"] .week-day,
+html[data-theme="dark"] .settings-row { background: #101b21; border-color: #304852; }
+html[data-theme="dark"] .habit-item.done,
+html[data-theme="dark"] .compact-habit.done,
+html[data-theme="dark"] .week-day.complete { background: #17372e; border-color: #326a55; }
+html[data-theme="dark"] .progress-track,
+html[data-theme="dark"] .bar-stack { background: #0c1419; }
+html[data-theme="dark"] .bottom-nav { background: rgba(23, 36, 43, .97); border-color: #304852; }
+html[data-theme="dark"] .nav-item.active { background: #245442; color: #caffea; }
+html[data-theme="dark"] .nav-item:hover:not(.active) { background: #20343d; }

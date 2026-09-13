@@ -48,6 +48,7 @@ let state = loadState();
 let currentTransactionFilter = 'month';
 let installEvent = null;
 let toastTimeout;
+let theme = localStorage.getItem('kamal-theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -138,6 +139,14 @@ function renderHeader() {
   $('#expenseDate').value ||= today();
   $('#timeDate').value ||= today();
   $('#scorecardDate').textContent = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  const button = $('#themeButton');
+  button.textContent = theme === 'dark' ? '☀' : '☾';
+  button.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+  button.setAttribute('aria-label', button.title);
 }
 
 function renderRule() {
@@ -469,6 +478,7 @@ function registerEvents() {
   });
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installEvent = event; $('#installButton').hidden = false; });
   $('#installButton').addEventListener('click', async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $('#installButton').hidden = true; });
+  $('#themeButton').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('kamal-theme', theme); applyTheme(); });
 }
 
 function registerPWA() {
@@ -476,6 +486,7 @@ function registerPWA() {
 }
 
 registerEvents();
+applyTheme();
 renderAll();
 renderTimer();
 setInterval(renderTimer, 1000);
