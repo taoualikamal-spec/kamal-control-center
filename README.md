@@ -2,10 +2,11 @@
 
 A private, offline-first tracker with:
 
-- 60 / 20 / 15 / 5 envelope money splitting
-- income, spending, debt, and emergency-cash tracking
-- a manual and live **Time Stolen** tracker
-- a three-item daily consistency scorecard
+- 60 / 20 / 15 / 5 envelope money splitting (envelopes are fully editable — add, rename, re-weight, or remove)
+- income, spending, debt, and emergency-cash tracking, with editable entries
+- a manual and live **Time Stolen** tracker, with editable entries
+- an editable daily consistency scorecard
+- light / dark / follow-device appearance
 - local backup export/import
 
 ## Use on desktop

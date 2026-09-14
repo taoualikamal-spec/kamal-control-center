@@ -75,6 +75,7 @@
               <label>Note <span class="optional">optional</span><input id="incomeNote" maxlength="160" placeholder="Payment, cash, side-work profit..."></label>
               <div class="split-preview" id="splitPreview"><span>Enter an amount to see the split.</span></div>
               <button class="primary-button full-width" type="submit">Split into envelopes</button>
+              <button class="text-button cancel-edit" id="cancelIncomeEdit" type="button" hidden>Cancel edit</button>
             </form>
           </section>
 
@@ -85,6 +86,7 @@
               <label>Envelope<select id="expenseEnvelope" required></select></label>
               <label>What was it for?<input id="expenseNote" maxlength="160" required placeholder="Food, phone, debt payment..."></label>
               <button class="secondary-button full-width" type="submit">Record payment</button>
+              <button class="text-button cancel-edit" id="cancelExpenseEdit" type="button" hidden>Cancel edit</button>
             </form>
           </section>
         </div>
@@ -124,6 +126,7 @@
               <div class="form-row"><label>Category<select id="timeCategory"></select></label><label>Date<input id="timeDate" type="date" required></label></div>
               <label>Note <span class="optional">optional</span><input id="timeNote" maxlength="160" placeholder="What happened before it started?"></label>
               <button class="secondary-button full-width" type="submit">Log time</button>
+              <button class="text-button cancel-edit" id="cancelTimeEdit" type="button" hidden>Cancel edit</button>
             </form>
           </section>
         </div>
@@ -163,10 +166,16 @@
           <section class="panel form-panel">
             <div class="panel-heading"><div><p class="eyebrow">Envelope rule</p><h2>60 / 20 / 15 / 5</h2></div></div>
             <form id="settingsForm" class="form-stack">
+              <label>Appearance<select id="themeSelect"><option value="light">Light mode</option><option value="dark">Dark mode</option><option value="system">Follow device</option></select></label>
+              <p class="settings-group-title">Cash envelopes</p>
               <div id="envelopeSettings"></div>
+              <button class="secondary-button full-width" id="addEnvelopeButton" type="button">+ Add envelope</button>
+              <p class="settings-group-title">Daily actions</p>
+              <div id="habitSettings"></div>
+              <button class="secondary-button full-width" id="addHabitButton" type="button">+ Add daily action</button>
               <label>Total debt currently owed (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
-              <p class="small-note">The four percentages must equal 100. Monthly targets are guidance, not permission to spend.</p>
-              <button class="primary-button full-width" type="submit">Save envelope rule</button>
+              <p class="small-note">Envelope percentages must equal 100. Add categories that match your real spending. Monthly targets are guidance, not permission to spend.</p>
+              <button class="primary-button full-width" type="submit">Save settings</button>
             </form>
           </section>
           <section class="panel data-panel">

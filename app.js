@@ -20,10 +20,12 @@ const timeCategories = {
   focus: ['Paid work', 'Income building', 'Learning', 'Product work', 'Family responsibility', 'Other']
 };
 
+const envelopePalette = ['#69a9ff', '#ba9aff', '#ff9b70', '#53d6ad', '#f7c968', '#fa7888', '#8abaff', '#c7aaff'];
+
 function defaultState() {
   return {
     version: 1,
-    settings: { envelopes: structuredClone(defaultEnvelopes), debtTotal: 45000 },
+    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), debtTotal: 45000 },
     transactions: [],
     timeEntries: [],
     days: {},
@@ -32,11 +34,18 @@ function defaultState() {
   };
 }
 
+function normalizeSettings(settings) {
+  settings.envelopes = (settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
+  settings.habits = (settings.habits && settings.habits.length ? settings.habits : structuredClone(defaultHabits)).map(item => ({ detail: '', ...item }));
+  settings.debtTotal = Number(settings.debtTotal ?? 45000);
+  return settings;
+}
+
 function loadState() {
   try {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!stored || !stored.settings) return defaultState();
-    stored.settings.envelopes = (stored.settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
+    normalizeSettings(stored.settings);
     stored.transactions ||= [];
     stored.timeEntries ||= [];
     stored.days ||= {};
@@ -48,7 +57,11 @@ let state = loadState();
 let currentTransactionFilter = 'month';
 let installEvent = null;
 let toastTimeout;
-let theme = localStorage.getItem('kamal-theme') || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+let editingIncomeId = null;
+let editingExpenseId = null;
+let editingTimeId = null;
+let themePreference = localStorage.getItem('kamal-theme') || 'system';
+const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)');
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -141,12 +154,26 @@ function renderHeader() {
   $('#scorecardDate').textContent = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
+function resolvedTheme() {
+  return themePreference === 'system' ? (prefersDark?.matches ? 'dark' : 'light') : themePreference;
+}
+
 function applyTheme() {
-  document.documentElement.dataset.theme = theme;
+  const active = resolvedTheme();
+  document.documentElement.dataset.theme = active;
   const button = $('#themeButton');
-  button.textContent = theme === 'dark' ? '☀' : '☾';
-  button.title = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
-  button.setAttribute('aria-label', button.title);
+  button.textContent = active === 'dark' ? '☀' : '☾';
+  const title = themePreference === 'system' ? 'Following device theme' : (active === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  const select = $('#themeSelect');
+  if (select) select.value = themePreference;
+}
+
+function setThemePreference(preference) {
+  themePreference = preference;
+  localStorage.setItem('kamal-theme', preference);
+  applyTheme();
 }
 
 function renderRule() {
@@ -220,7 +247,7 @@ function renderTransactions() {
     const envelope = state.settings.envelopes.find(item => item.id === entry.envelopeId);
     const description = isIncome ? `<strong>${escapeHtml(entry.source)}</strong><br><small>${escapeHtml(entry.note || 'Income received')}</small>` : `<strong>${escapeHtml(entry.note)}</strong><br><small>${escapeHtml(envelope?.name || 'Unknown envelope')}</small>`;
     const allocation = isIncome ? Object.entries(entry.allocations || {}).map(([id, amount]) => `${state.settings.envelopes.find(item => item.id === id)?.percent || 0}% ${money(amount)}`).join(' · ') : escapeHtml(envelope?.name || '');
-    return `<tr><td>${dateLabel(entry.date)}</td><td>${description}</td><td>${allocation}</td><td class="number ${isIncome ? 'positive' : 'negative'}">${isIncome ? '+' : '−'}${money(entry.amount)}</td><td><button class="delete-button" data-delete-transaction="${entry.id}" title="Delete entry">×</button></td></tr>`;
+    return `<tr><td>${dateLabel(entry.date)}</td><td>${description}</td><td>${allocation}</td><td class="number ${isIncome ? 'positive' : 'negative'}">${isIncome ? '+' : '−'}${money(entry.amount)}</td><td class="row-actions"><button class="icon-action" data-edit-transaction="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-transaction="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-row">No money activity recorded here yet.</td></tr>';
 }
 
@@ -263,7 +290,7 @@ function renderWeeklyBars() {
 
 function renderTimeRows() {
   const entries = state.timeEntries.slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`)).slice(0, 25);
-  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'negative'}">${entry.type === 'focus' ? 'Focus' : 'Stolen'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}</td><td class="number">${entry.minutes} min</td><td><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
+  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'negative'}">${entry.type === 'focus' ? 'Focus' : 'Stolen'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
 }
 
 function renderTimer() {
@@ -281,9 +308,10 @@ function renderTimer() {
 
 function renderHabits() {
   const day = getDayData();
-  $('#dashboardHabits').innerHTML = defaultHabits.map(habit => `<label class="compact-habit ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span>${escapeHtml(habit.title)}</span></label>`).join('');
+  const habits = state.settings.habits;
+  $('#dashboardHabits').innerHTML = habits.length ? habits.map(habit => `<label class="compact-habit ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span>${escapeHtml(habit.title)}</span></label>`).join('') : '<p class="small-note">Add daily actions in Setup.</p>';
   $('#dashboardPriority').value = day.priority || '';
-  $('#habitList').innerHTML = defaultHabits.map(habit => `<label class="habit-item ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span class="habit-text"><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span><span>${day.habits[habit.id] ? '✓' : ''}</span></label>`).join('');
+  $('#habitList').innerHTML = habits.length ? habits.map(habit => `<label class="habit-item ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span class="habit-text"><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span><span>${day.habits[habit.id] ? '✓' : ''}</span></label>`).join('') : '<p class="small-note">No daily actions yet. Add up to a few in Setup.</p>';
   $('#priorityInput').value = day.priority || '';
   $('#dailyReflection').value = day.reflection || '';
   renderStreaks();
@@ -297,18 +325,30 @@ function streakFor(habitId) {
 }
 
 function renderStreaks() {
-  $('#streakCards').innerHTML = defaultHabits.map(habit => `<article class="streak-card"><strong>${streakFor(habit.id)}</strong><span>day streak · ${escapeHtml(habit.title)}</span></article>`).join('');
+  const habits = state.settings.habits;
+  $('#streakCards').innerHTML = habits.map(habit => `<article class="streak-card"><strong>${streakFor(habit.id)}</strong><span>day streak · ${escapeHtml(habit.title)}</span></article>`).join('');
   $('#weekChecks').innerHTML = weekDates().map(date => {
-    const checked = defaultHabits.filter(habit => state.days[date]?.habits?.[habit.id]).length;
+    const checked = habits.filter(habit => state.days[date]?.habits?.[habit.id]).length;
     const label = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1);
-    return `<div class="week-day ${checked === defaultHabits.length ? 'complete' : ''} ${date === today() ? 'today' : ''}"><b>${label}</b><span>${checked}/${defaultHabits.length}</span></div>`;
+    return `<div class="week-day ${habits.length && checked === habits.length ? 'complete' : ''} ${date === today() ? 'today' : ''}"><b>${label}</b><span>${checked}/${habits.length}</span></div>`;
   }).join('');
 }
 
 function renderSettings() {
-  $('#envelopeSettings').innerHTML = state.settings.envelopes.map(envelope => `<div class="settings-row"><div class="envelope-label" style="color:${envelope.color}">${escapeHtml(envelope.name)}</div><label>%<input data-percent="${envelope.id}" type="number" min="0" max="100" step="1" value="${envelope.percent}"></label><label>Monthly target<input data-target="${envelope.id}" type="number" min="0" step="1" value="${envelope.target}"></label></div>`).join('');
+  $('#envelopeSettings').innerHTML = state.settings.envelopes.map(envelope => `<div class="settings-row envelope-settings-row">
+    <label><span class="row-swatch" style="background:${envelope.color}"></span>Name<input data-name="${envelope.id}" maxlength="40" value="${escapeHtml(envelope.name)}"></label>
+    <label>%<input data-percent="${envelope.id}" type="number" min="0" max="100" step="1" value="${envelope.percent}"></label>
+    <label>Target<input data-target="${envelope.id}" type="number" min="0" step="1" value="${envelope.target}"></label>
+    <button class="delete-button" type="button" data-remove-envelope="${envelope.id}" title="Remove envelope" aria-label="Remove ${escapeHtml(envelope.name)}">×</button>
+  </div>`).join('');
+  $('#habitSettings').innerHTML = state.settings.habits.map(habit => `<div class="settings-row habit-settings-row">
+    <label>Daily action<input data-habit-title="${habit.id}" maxlength="60" value="${escapeHtml(habit.title)}"></label>
+    <label>Detail <span class="optional">optional</span><input data-habit-detail="${habit.id}" maxlength="120" value="${escapeHtml(habit.detail || '')}"></label>
+    <button class="delete-button" type="button" data-remove-habit="${habit.id}" title="Remove daily action" aria-label="Remove ${escapeHtml(habit.title)}">×</button>
+  </div>`).join('') || '<p class="small-note">No daily actions yet. Add one below.</p>';
   $('#debtTotalInput').value = state.settings.debtTotal;
   $('#storageNote').textContent = state.updatedAt ? `Saved locally: ${new Date(state.updatedAt).toLocaleString()}` : 'No backup created yet.';
+  applyTheme();
 }
 
 function renderAll() {
@@ -330,12 +370,18 @@ function addIncome(event) {
   event.preventDefault();
   const amount = Math.round(Number($('#incomeAmount').value));
   if (!amount || amount < 1) return;
-  state.transactions.push({ id: makeId(), type: 'income', amount, date: $('#incomeDate').value, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim(), allocations: splitIncome(amount), createdAt: new Date().toISOString() });
+  const fields = { amount, date: $('#incomeDate').value, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim(), allocations: splitIncome(amount) };
+  if (editingIncomeId) {
+    const entry = state.transactions.find(item => item.id === editingIncomeId);
+    if (entry) Object.assign(entry, fields);
+  } else {
+    state.transactions.push({ id: makeId(), type: 'income', ...fields, createdAt: new Date().toISOString() });
+  }
+  const wasEditing = Boolean(editingIncomeId);
   saveState();
-  event.target.reset();
-  $('#incomeDate').value = today();
+  cancelIncomeEdit();
   renderAll();
-  toast(`${money(amount)} split into your envelopes.`);
+  toast(wasEditing ? `Payment updated and re-split.` : `${money(amount)} split into your envelopes.`);
 }
 
 function addExpense(event) {
@@ -343,25 +389,109 @@ function addExpense(event) {
   const amount = Math.round(Number($('#expenseAmount').value));
   if (!amount || amount < 1) return;
   const envelopeId = $('#expenseEnvelope').value;
-  state.transactions.push({ id: makeId(), type: 'expense', amount, date: $('#expenseDate').value, envelopeId, note: $('#expenseNote').value.trim(), createdAt: new Date().toISOString() });
+  const fields = { amount, date: $('#expenseDate').value, envelopeId, note: $('#expenseNote').value.trim() };
+  if (editingExpenseId) {
+    const entry = state.transactions.find(item => item.id === editingExpenseId);
+    if (entry) Object.assign(entry, fields);
+  } else {
+    state.transactions.push({ id: makeId(), type: 'expense', ...fields, createdAt: new Date().toISOString() });
+  }
+  const wasEditing = Boolean(editingExpenseId);
   saveState();
-  event.target.reset();
-  $('#expenseDate').value = today();
+  cancelExpenseEdit();
   renderAll();
   const envelope = state.settings.envelopes.find(item => item.id === envelopeId);
-  toast(`${money(amount)} recorded from ${envelope.name}.`);
+  toast(wasEditing ? 'Payment updated.' : `${money(amount)} recorded from ${envelope?.name || 'envelope'}.`);
 }
 
 function addTimeEntry(event) {
   event.preventDefault();
   const minutes = Math.round(Number($('#timeMinutes').value));
   if (!minutes || minutes < 1) return;
-  state.timeEntries.push({ id: makeId(), type: $('#timeType').value, category: $('#timeCategory').value, minutes, date: $('#timeDate').value, note: $('#timeNote').value.trim(), createdAt: new Date().toISOString() });
+  const fields = { type: $('#timeType').value, category: $('#timeCategory').value, minutes, date: $('#timeDate').value, note: $('#timeNote').value.trim() };
+  if (editingTimeId) {
+    const entry = state.timeEntries.find(item => item.id === editingTimeId);
+    if (entry) Object.assign(entry, fields);
+  } else {
+    state.timeEntries.push({ id: makeId(), ...fields, createdAt: new Date().toISOString() });
+  }
+  const wasEditing = Boolean(editingTimeId);
   saveState();
-  event.target.reset();
-  $('#timeDate').value = today();
+  cancelTimeEdit();
   renderAll();
-  toast(`${minutes} minutes logged. Data, not guilt.`);
+  toast(wasEditing ? 'Time entry updated.' : `${minutes} minutes logged. Data, not guilt.`);
+}
+
+function editTransaction(id) {
+  const entry = state.transactions.find(item => item.id === id);
+  if (!entry) return;
+  selectTab('money');
+  if (entry.type === 'income') {
+    cancelExpenseEdit();
+    editingIncomeId = id;
+    $('#incomeAmount').value = entry.amount;
+    $('#incomeDate').value = entry.date;
+    $('#incomeSource').value = entry.source || '';
+    $('#incomeNote').value = entry.note || '';
+    renderIncomePreview();
+    setFormEditing('#incomeForm', true, 'Update payment');
+    $('#incomeAmount').focus();
+  } else {
+    cancelIncomeEdit();
+    editingExpenseId = id;
+    $('#expenseAmount').value = entry.amount;
+    $('#expenseDate').value = entry.date;
+    $('#expenseEnvelope').value = entry.envelopeId;
+    $('#expenseNote').value = entry.note || '';
+    setFormEditing('#expenseForm', true, 'Update payment');
+    $('#expenseAmount').focus();
+  }
+}
+
+function editTimeEntry(id) {
+  const entry = state.timeEntries.find(item => item.id === id);
+  if (!entry) return;
+  selectTab('time');
+  editingTimeId = id;
+  $('#timeType').value = entry.type;
+  updateTimeCategoryOptions();
+  $('#timeCategory').value = entry.category;
+  $('#timeMinutes').value = entry.minutes;
+  $('#timeDate').value = entry.date;
+  $('#timeNote').value = entry.note || '';
+  setFormEditing('#timeForm', true, 'Update entry');
+  $('#timeMinutes').focus();
+}
+
+function setFormEditing(formSelector, editing, submitLabel) {
+  const form = $(formSelector);
+  form.classList.toggle('is-editing', editing);
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.textContent = submitLabel;
+  const cancel = form.querySelector('.cancel-edit');
+  if (cancel) cancel.hidden = !editing;
+}
+
+function cancelIncomeEdit() {
+  editingIncomeId = null;
+  $('#incomeForm').reset();
+  $('#incomeDate').value = today();
+  renderIncomePreview();
+  setFormEditing('#incomeForm', false, 'Split into envelopes');
+}
+
+function cancelExpenseEdit() {
+  editingExpenseId = null;
+  $('#expenseForm').reset();
+  $('#expenseDate').value = today();
+  setFormEditing('#expenseForm', false, 'Record payment');
+}
+
+function cancelTimeEdit() {
+  editingTimeId = null;
+  $('#timeForm').reset();
+  $('#timeDate').value = today();
+  setFormEditing('#timeForm', false, 'Log time');
 }
 
 function startTimer() {
@@ -393,17 +523,67 @@ function saveDayText(field, value) {
   saveState();
 }
 
+function readEnvelopeInputs() {
+  return state.settings.envelopes.map(envelope => ({
+    ...envelope,
+    name: ($(`[data-name="${envelope.id}"]`)?.value.trim()) || envelope.name,
+    percent: Number($(`[data-percent="${envelope.id}"]`)?.value ?? envelope.percent),
+    target: Number($(`[data-target="${envelope.id}"]`)?.value ?? envelope.target)
+  }));
+}
+
+function readHabitInputs() {
+  return state.settings.habits.map(habit => ({
+    ...habit,
+    title: ($(`[data-habit-title="${habit.id}"]`)?.value.trim()) || habit.title,
+    detail: ($(`[data-habit-detail="${habit.id}"]`)?.value.trim()) ?? habit.detail
+  }));
+}
+
 function saveSettings(event) {
   event.preventDefault();
-  const envelopes = state.settings.envelopes.map(envelope => ({ ...envelope, percent: Number($(`[data-percent="${envelope.id}"]`).value), target: Number($(`[data-target="${envelope.id}"]`).value) }));
+  const envelopes = readEnvelopeInputs();
+  if (!envelopes.length) { toast('Add at least one envelope.'); return; }
   const total = envelopes.reduce((sum, envelope) => sum + envelope.percent, 0);
   if (total !== 100) { toast(`Your envelope percentages add up to ${total}%. They must equal 100%.`); return; }
   if (envelopes.some(envelope => envelope.percent < 0 || envelope.target < 0)) { toast('Percentages and targets cannot be negative.'); return; }
   state.settings.envelopes = envelopes;
+  state.settings.habits = readHabitInputs().filter(habit => habit.title);
   state.settings.debtTotal = Math.max(0, Math.round(Number($('#debtTotalInput').value || 0)));
   saveState();
   renderAll();
-  toast('Envelope rule saved.');
+  toast('Settings saved.');
+}
+
+function addEnvelope() {
+  state.settings.envelopes = readEnvelopeInputs();
+  state.settings.habits = readHabitInputs();
+  const color = envelopePalette[state.settings.envelopes.length % envelopePalette.length];
+  state.settings.envelopes.push({ id: makeId(), name: 'New envelope', percent: 0, target: 0, color });
+  renderSettings();
+  toast('Envelope added. Set its percentage, then save.');
+}
+
+function removeEnvelope(id) {
+  state.settings.envelopes = readEnvelopeInputs().filter(envelope => envelope.id !== id);
+  state.settings.habits = readHabitInputs();
+  renderSettings();
+  toast('Envelope removed. Adjust percentages to total 100%, then save.');
+}
+
+function addHabit() {
+  state.settings.envelopes = readEnvelopeInputs();
+  state.settings.habits = readHabitInputs();
+  state.settings.habits.push({ id: makeId(), title: 'New daily action', detail: '' });
+  renderSettings();
+  toast('Daily action added. Rename it, then save.');
+}
+
+function removeHabit(id) {
+  state.settings.envelopes = readEnvelopeInputs();
+  state.settings.habits = readHabitInputs().filter(habit => habit.id !== id);
+  renderSettings();
+  toast('Daily action removed. Save to keep the change.');
 }
 
 function exportData() {
@@ -424,7 +604,7 @@ async function importData(event) {
     const nextState = JSON.parse(await file.text());
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
-    state.settings.envelopes = (state.settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
+    normalizeSettings(state.settings);
     state.timeEntries ||= []; state.days ||= {}; state.activeTimer ||= null;
     saveState(); renderAll(); toast('Backup imported successfully.');
   } catch { toast('This file is not a valid Control Center backup.'); }
@@ -433,10 +613,13 @@ async function importData(event) {
 
 function deleteTransaction(id) {
   state.transactions = state.transactions.filter(entry => entry.id !== id);
+  if (editingIncomeId === id) cancelIncomeEdit();
+  if (editingExpenseId === id) cancelExpenseEdit();
   saveState(); renderAll(); toast('Money entry deleted.');
 }
 function deleteTime(id) {
   state.timeEntries = state.timeEntries.filter(entry => entry.id !== id);
+  if (editingTimeId === id) cancelTimeEdit();
   saveState(); renderAll(); toast('Time entry deleted.');
 }
 
@@ -466,6 +649,12 @@ function registerEvents() {
     if (!confirm('Delete all locally saved transactions, time logs, and scorecards? Export a backup first.')) return;
     state = defaultState(); saveState(); renderAll(); toast('Local app data deleted.');
   });
+  $('#addEnvelopeButton').addEventListener('click', addEnvelope);
+  $('#addHabitButton').addEventListener('click', addHabit);
+  $('#themeSelect').addEventListener('change', event => setThemePreference(event.target.value));
+  $('#cancelIncomeEdit').addEventListener('click', cancelIncomeEdit);
+  $('#cancelExpenseEdit').addEventListener('click', cancelExpenseEdit);
+  $('#cancelTimeEdit').addEventListener('click', cancelTimeEdit);
   document.addEventListener('change', event => { if (event.target.matches('[data-habit]')) updateHabit(event.target.dataset.habit, event.target.checked); });
   $('#dashboardPriority').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#priorityInput').value = event.target.value; });
   $('#priorityInput').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#dashboardPriority').value = event.target.value; });
@@ -473,12 +662,21 @@ function registerEvents() {
   document.addEventListener('click', event => {
     const transactionButton = event.target.closest('[data-delete-transaction]');
     const timeButton = event.target.closest('[data-delete-time]');
+    const editTransactionButton = event.target.closest('[data-edit-transaction]');
+    const editTimeButton = event.target.closest('[data-edit-time]');
+    const removeEnvelopeButton = event.target.closest('[data-remove-envelope]');
+    const removeHabitButton = event.target.closest('[data-remove-habit]');
     if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
     if (timeButton) deleteTime(timeButton.dataset.deleteTime);
+    if (editTransactionButton) editTransaction(editTransactionButton.dataset.editTransaction);
+    if (editTimeButton) editTimeEntry(editTimeButton.dataset.editTime);
+    if (removeEnvelopeButton) removeEnvelope(removeEnvelopeButton.dataset.removeEnvelope);
+    if (removeHabitButton) removeHabit(removeHabitButton.dataset.removeHabit);
   });
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installEvent = event; $('#installButton').hidden = false; });
   $('#installButton').addEventListener('click', async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $('#installButton').hidden = true; });
-  $('#themeButton').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('kamal-theme', theme); applyTheme(); });
+  $('#themeButton').addEventListener('click', () => setThemePreference(resolvedTheme() === 'dark' ? 'light' : 'dark'));
+  prefersDark?.addEventListener?.('change', () => { if (themePreference === 'system') applyTheme(); });
 }
 
 function registerPWA() {

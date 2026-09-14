@@ -299,3 +299,24 @@ html[data-theme="dark"] .bar-stack { background: #0c1419; }
 html[data-theme="dark"] .bottom-nav { background: rgba(23, 36, 43, .97); border-color: #304852; }
 html[data-theme="dark"] .nav-item.active { background: #245442; color: #caffea; }
 html[data-theme="dark"] .nav-item:hover:not(.active) { background: #20343d; }
+
+/* Row actions: edit + delete controls in tables */
+.row-actions { display: flex; gap: 2px; justify-content: flex-end; align-items: center; white-space: nowrap; }
+.icon-action { color: var(--quiet); border: 0; background: transparent; font-size: .9rem; padding: 3px 5px; border-radius: 6px; line-height: 1; }
+.icon-action:hover { color: var(--blue); background: var(--surface-3); }
+
+/* Cancel-edit affordance under editable forms */
+.cancel-edit { display: block; width: 100%; text-align: center; }
+form.is-editing { outline: 2px solid rgba(109, 167, 255, .28); outline-offset: 8px; border-radius: 12px; }
+
+/* Settings groups: envelopes + daily actions editors */
+.settings-group-title { margin: 6px 0 -4px; font-size: .72rem; letter-spacing: .09em; text-transform: uppercase; color: var(--quiet); font-weight: 800; }
+.settings-row.envelope-settings-row { grid-template-columns: minmax(0, 1fr) 62px 92px 30px; }
+.settings-row.habit-settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px; }
+.settings-row .delete-button { align-self: end; min-height: 44px; }
+.row-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+
+@media (max-width: 580px) {
+  .settings-row.envelope-settings-row { grid-template-columns: minmax(0, 1fr) 52px 74px 26px; gap: 6px; }
+  .settings-row.habit-settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px; gap: 6px; }
+}

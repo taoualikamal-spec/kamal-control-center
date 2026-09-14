@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kamal-control-center-v3';
+const CACHE_NAME = 'kamal-control-center-v4';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {
