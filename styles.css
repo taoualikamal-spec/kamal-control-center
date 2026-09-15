@@ -320,3 +320,46 @@ form.is-editing { outline: 2px solid rgba(109, 167, 255, .28); outline-offset: 8
   .settings-row.envelope-settings-row { grid-template-columns: minmax(0, 1fr) 52px 74px 26px; gap: 6px; }
   .settings-row.habit-settings-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 26px; gap: 6px; }
 }
+
+/* Focus timer: presets and countdown states */
+.preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-button { border: 1px solid var(--line); background: var(--surface-3); color: var(--text); border-radius: 999px; padding: 9px 15px; font-weight: 750; font-size: .82rem; min-height: 42px; transition: background .15s ease, color .15s ease; }
+.chip-button:hover:not(:disabled) { background: var(--green); color: #fff; border-color: transparent; }
+.chip-button.ghost { background: transparent; color: var(--muted); }
+.chip-button.ghost:hover:not(:disabled) { background: var(--yellow); color: #1c2927; }
+.chip-button:disabled { opacity: .45; cursor: default; }
+.timer-display.countdown { color: var(--green); }
+.timer-display.break { color: var(--yellow); }
+#timerTaskWrap[hidden] { display: none; }
+
+/* Focus goal ring */
+.focus-goal-inline { display: flex; align-items: center; gap: 15px; }
+.focus-goal-panel { margin-bottom: 18px; }
+.scorecard-panel .focus-goal-inline { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.focus-goal-inline .eyebrow { margin: 0 0 2px; }
+.focus-goal-inline > div:last-child { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.focus-caption { display: block; color: var(--muted); font-size: .8rem; }
+.focus-ring { position: relative; width: 80px; height: 80px; flex: 0 0 auto; }
+.focus-ring svg { width: 80px; height: 80px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--surface-3); stroke-width: 7; }
+.ring-fg { fill: none; stroke: var(--green); stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset .5s ease; }
+.ring-label { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; line-height: 1; }
+.ring-label strong { font-size: 1.15rem; color: var(--text); }
+.ring-label span { display: block; margin-top: 2px; font-size: .6rem; color: var(--muted); }
+
+/* Top-3 tasks (MITs) */
+.task-block { margin-top: 16px; }
+.task-block-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.task-block-head span { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+.task-count { color: var(--muted); font-size: .72rem; }
+.task-list { display: grid; gap: 7px; margin-bottom: 10px; }
+.task-item { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
+.task-item label { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; cursor: pointer; font-size: .9rem; color: var(--text); }
+.task-item label span { overflow-wrap: anywhere; }
+.task-item.done label span { text-decoration: line-through; color: var(--quiet); }
+.task-item input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; min-height: 0; padding: 0; accent-color: var(--green); }
+.rolled-tag { flex: 0 0 auto; font-size: .6rem; color: var(--yellow); border: 1px solid var(--yellow); border-radius: 999px; padding: 2px 7px; white-space: nowrap; }
+.task-tag { display: inline-block; font-size: .66rem; background: var(--surface-3); color: var(--muted); border-radius: 6px; padding: 1px 7px; margin-left: 4px; }
+.task-add { display: flex; gap: 8px; }
+.task-add input { flex: 1; min-width: 0; }
+.task-add .secondary-button { width: auto; padding-inline: 16px; }

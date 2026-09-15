@@ -25,7 +25,7 @@ const envelopePalette = ['#69a9ff', '#ba9aff', '#ff9b70', '#53d6ad', '#f7c968', 
 function defaultState() {
   return {
     version: 1,
-    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), debtTotal: 45000 },
+    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), debtTotal: 45000, dailyFocusTarget: 120 },
     transactions: [],
     timeEntries: [],
     days: {},
@@ -38,6 +38,7 @@ function normalizeSettings(settings) {
   settings.envelopes = (settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
   settings.habits = (settings.habits && settings.habits.length ? settings.habits : structuredClone(defaultHabits)).map(item => ({ detail: '', ...item }));
   settings.debtTotal = Number(settings.debtTotal ?? 45000);
+  settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
   return settings;
 }
 
@@ -90,6 +91,92 @@ function beginningOfDay(date) { return new Date(`${date}T00:00:00`).getTime(); }
 function getDayData(date = today()) {
   state.days[date] ||= { priority: '', reflection: '', habits: {} };
   return state.days[date];
+}
+
+const MAX_TASKS = 3;
+
+// Carry unfinished tasks from the most recent earlier day into today, once per day.
+function rolloverTasks() {
+  const day = getDayData(today());
+  if (Array.isArray(day.tasks)) return;
+  const priorDates = Object.keys(state.days).filter(date => date < today() && Array.isArray(state.days[date].tasks)).sort();
+  const lastDate = priorDates[priorDates.length - 1];
+  const carried = lastDate ? state.days[lastDate].tasks.filter(task => !task.done).map(task => ({ id: makeId(), text: task.text, done: false, rolled: true })) : [];
+  day.tasks = carried;
+  if (carried.length) saveState();
+}
+
+function addTask(text) {
+  const value = text.trim();
+  if (!value) return;
+  const day = getDayData();
+  day.tasks ||= [];
+  if (day.tasks.length >= MAX_TASKS) { toast(`Keep it to ${MAX_TASKS}. Finish or clear one first.`); return; }
+  day.tasks.push({ id: makeId(), text: value, done: false });
+  saveState();
+  renderTasks();
+  updateTimerTaskOptions();
+}
+
+function toggleTask(id, done) {
+  const day = getDayData();
+  const task = (day.tasks || []).find(item => item.id === id);
+  if (!task) return;
+  task.done = done;
+  saveState();
+  renderTasks();
+  renderFocusGoal();
+  updateTimerTaskOptions();
+}
+
+function deleteTask(id) {
+  const day = getDayData();
+  day.tasks = (day.tasks || []).filter(item => item.id !== id);
+  saveState();
+  renderTasks();
+  updateTimerTaskOptions();
+}
+
+function todayFocusOnTasks() {
+  return state.timeEntries.filter(entry => entry.type === 'focus' && entry.date === today() && entry.task).reduce((sum, entry) => sum + Number(entry.minutes), 0);
+}
+
+function playChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    [880, 1320].forEach((freq, index) => {
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.connect(gain); gain.connect(ctx.destination);
+      const start = ctx.currentTime + index * 0.18;
+      oscillator.type = 'sine';
+      oscillator.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+      oscillator.start(start);
+      oscillator.stop(start + 0.52);
+    });
+    setTimeout(() => ctx.close?.(), 1500);
+  } catch { /* audio unavailable */ }
+}
+
+function requestNotifyPermission() {
+  try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission(); } catch { /* ignore */ }
+}
+
+function notify(title, body) {
+  try { if (window.Notification && Notification.permission === 'granted') new Notification(title, { body, icon: 'icon.svg' }); } catch { /* ignore */ }
+}
+
+function formatClock(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
+  const m = String(Math.floor(seconds % 3600 / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
 }
 
 function splitIncome(amount) {
@@ -222,9 +309,11 @@ function renderDashboard() {
   $('#stolenToday').textContent = `${time.stolen} min`;
   $('#stolenDetail').textContent = time.stolen ? 'Name it, then choose the next block.' : 'Track it honestly, without shame.';
   $('#focusToday').textContent = `${time.focus} min`;
-  $('#focusDetail').textContent = time.focus ? 'Focused minutes are protected minutes.' : 'Protect one useful block.';
+  const focusTarget = state.settings.dailyFocusTarget || 0;
+  $('#focusDetail').textContent = focusTarget ? `Goal: ${focusTarget} min today` : (time.focus ? 'Focused minutes are protected minutes.' : 'Protect one useful block.');
   renderEnvelopes();
   renderHabits();
+  renderFocusGoal();
   const banner = $('#insightBanner');
   if (!income) { banner.textContent = 'Start small: record the next MAD that reaches your hand. The system begins with one honest entry.'; banner.classList.add('show'); }
   else if (time.stolen > time.focus && time.stolen >= 30) { banner.textContent = `Today has ${time.stolen - time.focus} more stolen minutes than focused minutes. A 25-minute reset is enough to change the direction.`; banner.classList.add('show'); }
@@ -255,6 +344,7 @@ function categoriesFor(type) { return timeCategories[type].map(category => `<opt
 function updateTimeCategoryOptions() {
   $('#timerCategory').innerHTML = categoriesFor($('#timerType').value);
   $('#timeCategory').innerHTML = categoriesFor($('#timeType').value);
+  updateTimerTaskVisibility();
 }
 
 function renderTime() {
@@ -273,6 +363,7 @@ function renderTime() {
   renderWeeklyBars();
   $('#timeSuggestion').textContent = top ? `Your biggest pattern is ${top[0].toLowerCase()}. Make the next focused block easier than opening it.` : 'Start with one entry. Accuracy beats perfection.';
   renderTimeRows();
+  renderFocusGoal();
   renderTimer();
 }
 
@@ -290,20 +381,47 @@ function renderWeeklyBars() {
 
 function renderTimeRows() {
   const entries = state.timeEntries.slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`)).slice(0, 25);
-  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'negative'}">${entry.type === 'focus' ? 'Focus' : 'Stolen'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
+  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'negative'}">${entry.type === 'focus' ? 'Focus' : 'Stolen'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}${entry.task ? ` <span class="task-tag">${escapeHtml(entry.task)}</span>` : ''}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
+}
+
+function updateTimerTaskOptions() {
+  const select = $('#timerTask');
+  if (!select) return;
+  const current = select.value;
+  const tasks = (getDayData().tasks || []).filter(task => !task.done);
+  select.innerHTML = `<option value="">General focus</option>` + tasks.map(task => `<option value="${task.id}">${escapeHtml(task.text)}</option>`).join('');
+  if ([...select.options].some(option => option.value === current)) select.value = current;
+}
+
+function updateTimerTaskVisibility() {
+  const wrap = $('#timerTaskWrap');
+  if (wrap) wrap.hidden = $('#timerType').value !== 'focus';
 }
 
 function renderTimer() {
   const active = state.activeTimer;
-  $('#startTimerButton').disabled = Boolean(active);
+  $$('#focusPresets .chip-button').forEach(button => { button.disabled = Boolean(active); });
   $('#stopTimerButton').disabled = !active;
-  if (!active) { $('#timerTitle').textContent = 'Start an honest timer'; $('#timerDisplay').textContent = '00:00:00'; return; }
-  $('#timerTitle').textContent = active.type === 'focus' ? 'Focus is being protected' : 'Time is being noticed';
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(active.startedAt).getTime()) / 1000));
-  const h = String(Math.floor(seconds / 3600)).padStart(2, '0');
-  const m = String(Math.floor(seconds % 3600 / 60)).padStart(2, '0');
-  const s = String(seconds % 60).padStart(2, '0');
-  $('#timerDisplay').textContent = `${h}:${m}:${s}`;
+  const display = $('#timerDisplay');
+  const title = $('#timerTitle');
+  if (!active) {
+    title.textContent = 'Start a focus session';
+    display.textContent = '00:00:00';
+    display.classList.remove('countdown', 'break');
+    return;
+  }
+  const elapsed = (Date.now() - new Date(active.startedAt).getTime()) / 1000;
+  if (active.mode === 'stopwatch') {
+    title.textContent = active.type === 'focus' ? 'Focus is being protected' : 'Time is being noticed';
+    display.classList.remove('countdown', 'break');
+    display.textContent = formatClock(elapsed);
+  } else {
+    const remaining = active.targetMinutes * 60 - elapsed;
+    title.textContent = active.mode === 'break' ? 'On a break — step away' : (active.type === 'focus' ? 'Focus countdown running' : 'Countdown running');
+    display.classList.toggle('break', active.mode === 'break');
+    display.classList.toggle('countdown', active.mode !== 'break');
+    display.textContent = formatClock(remaining);
+  }
 }
 
 function renderHabits() {
@@ -314,7 +432,57 @@ function renderHabits() {
   $('#habitList').innerHTML = habits.length ? habits.map(habit => `<label class="habit-item ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span class="habit-text"><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span><span>${day.habits[habit.id] ? '✓' : ''}</span></label>`).join('') : '<p class="small-note">No daily actions yet. Add up to a few in Setup.</p>';
   $('#priorityInput').value = day.priority || '';
   $('#dailyReflection').value = day.reflection || '';
+  renderTasks();
   renderStreaks();
+}
+
+function taskListHTML(tasks) {
+  if (!tasks.length) return '<p class="small-note">No tasks yet. Add up to three that would make today count.</p>';
+  return tasks.map(task => `<div class="task-item ${task.done ? 'done' : ''}">
+    <label><input type="checkbox" data-task-toggle="${task.id}" ${task.done ? 'checked' : ''}><span>${escapeHtml(task.text)}</span></label>
+    ${task.rolled ? '<span class="rolled-tag" title="Carried over from a previous day">rolled over</span>' : ''}
+    <button type="button" class="delete-button" data-task-delete="${task.id}" title="Remove task" aria-label="Remove task">×</button>
+  </div>`).join('');
+}
+
+function renderTasks() {
+  const tasks = getDayData().tasks || [];
+  const html = taskListHTML(tasks);
+  const done = tasks.filter(task => task.done).length;
+  $$('[data-task-list]').forEach(container => { container.innerHTML = html; });
+  $$('[data-task-count]').forEach(node => { node.textContent = tasks.length ? `${done}/${tasks.length} done` : ''; });
+  const full = tasks.length >= MAX_TASKS;
+  $$('[data-task-input]').forEach(input => { input.disabled = full; input.placeholder = full ? 'Three tasks is the limit for today' : 'Add a task that matters (max 3)'; });
+}
+
+function focusRingHTML(current, target) {
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
+  const pct = target > 0 ? Math.min(100, current / target * 100) : 0;
+  const offset = circumference * (1 - pct / 100);
+  const reached = target > 0 && current >= target;
+  return `<div class="focus-ring ${reached ? 'reached' : ''}">
+    <svg viewBox="0 0 80 80" aria-hidden="true">
+      <circle class="ring-bg" cx="40" cy="40" r="${radius}"></circle>
+      <circle class="ring-fg" cx="40" cy="40" r="${radius}" style="stroke-dasharray:${circumference.toFixed(1)};stroke-dashoffset:${offset.toFixed(1)}"></circle>
+    </svg>
+    <div class="ring-label"><strong>${current}</strong><span>/ ${target || '—'} min</span></div>
+  </div>`;
+}
+
+function renderFocusGoal() {
+  const focusMinutes = todayTimeTotals().focus;
+  const target = state.settings.dailyFocusTarget || 0;
+  const onTasks = todayFocusOnTasks();
+  const ring = focusRingHTML(focusMinutes, target);
+  const pct = target > 0 ? Math.round(Math.min(100, focusMinutes / target * 100)) : 0;
+  let caption;
+  if (!target) caption = 'Set a daily focus target in Setup.';
+  else if (focusMinutes >= target) caption = `Goal reached — ${focusMinutes} min focused today.`;
+  else caption = `${pct}% of today's ${target}-min goal.`;
+  if (onTasks > 0) caption += ` ${onTasks} min on your tasks.`;
+  $$('[data-focus-ring]').forEach(node => { node.innerHTML = ring; });
+  $$('[data-focus-caption]').forEach(node => { node.textContent = caption; });
 }
 
 function streakFor(habitId) {
@@ -347,6 +515,7 @@ function renderSettings() {
     <button class="delete-button" type="button" data-remove-habit="${habit.id}" title="Remove daily action" aria-label="Remove ${escapeHtml(habit.title)}">×</button>
   </div>`).join('') || '<p class="small-note">No daily actions yet. Add one below.</p>';
   $('#debtTotalInput').value = state.settings.debtTotal;
+  $('#focusTargetInput').value = state.settings.dailyFocusTarget;
   $('#storageNote').textContent = state.updatedAt ? `Saved locally: ${new Date(state.updatedAt).toLocaleString()}` : 'No backup created yet.';
   applyTheme();
 }
@@ -358,6 +527,7 @@ function renderAll() {
   renderIncomePreview();
   renderTransactions();
   updateTimeCategoryOptions();
+  updateTimerTaskOptions();
   renderTime();
   renderSettings();
 }
@@ -494,22 +664,59 @@ function cancelTimeEdit() {
   setFormEditing('#timeForm', false, 'Log time');
 }
 
-function startTimer() {
-  state.activeTimer = { type: $('#timerType').value, category: $('#timerCategory').value, note: $('#timerNote').value.trim(), startedAt: new Date().toISOString() };
+function beginTimer(mode, targetMinutes = 0) {
+  if (state.activeTimer) return;
+  if (mode !== 'break') requestNotifyPermission();
+  const type = mode === 'break' ? 'break' : $('#timerType').value;
+  const taskSelect = $('#timerTask');
+  const isFocus = type === 'focus';
+  state.activeTimer = {
+    mode,
+    type,
+    category: mode === 'break' ? '' : $('#timerCategory').value,
+    note: mode === 'break' ? '' : $('#timerNote').value.trim(),
+    taskId: isFocus && taskSelect ? taskSelect.value : '',
+    taskText: isFocus && taskSelect && taskSelect.value ? taskSelect.options[taskSelect.selectedIndex].text : '',
+    targetMinutes,
+    startedAt: new Date().toISOString()
+  };
   saveState();
   renderTimer();
-  toast('Timer started. Stay with the next minute.');
+  if (mode === 'break') toast(`Break for ${targetMinutes} minutes. Rest properly.`);
+  else if (mode === 'countdown') toast(`${targetMinutes}-minute ${isFocus ? 'focus' : ''} block started.`.replace('  ', ' '));
+  else toast('Open timer started. Stop it when you are done.');
 }
 
-function stopTimer() {
+function finishActiveTimer(auto) {
   const active = state.activeTimer;
   if (!active) return;
-  const minutes = Math.max(1, Math.round((Date.now() - new Date(active.startedAt).getTime()) / 60000));
-  state.timeEntries.push({ id: makeId(), type: active.type, category: active.category, note: active.note, minutes, date: today(), createdAt: new Date().toISOString() });
   state.activeTimer = null;
+  if (active.mode === 'break') {
+    saveState();
+    renderAll();
+    if (auto) { playChime(); notify('Break over', 'Back to it — start your next focus block.'); }
+    toast(auto ? 'Break finished. Begin the next block.' : 'Break ended.');
+    return;
+  }
+  const elapsedMinutes = Math.max(1, Math.round((Date.now() - new Date(active.startedAt).getTime()) / 60000));
+  const minutes = active.mode === 'countdown' && auto ? active.targetMinutes : elapsedMinutes;
+  state.timeEntries.push({ id: makeId(), type: active.type, category: active.category, note: active.note, minutes, date: today(), taskId: active.taskId || '', task: active.taskText || '', createdAt: new Date().toISOString() });
   saveState();
   renderAll();
+  if (auto) {
+    playChime();
+    notify(active.type === 'focus' ? 'Focus session complete' : 'Timer complete', `${minutes} minutes logged${active.taskText ? ` · ${active.taskText}` : ''}.`);
+  }
   toast(`${minutes} minutes ${active.type === 'focus' ? 'of focus protected' : 'noticed and logged'}.`);
+}
+
+function tickTimer() {
+  const active = state.activeTimer;
+  if (active && active.mode !== 'stopwatch') {
+    const remaining = active.targetMinutes * 60 - (Date.now() - new Date(active.startedAt).getTime()) / 1000;
+    if (remaining <= 0) { finishActiveTimer(true); return; }
+  }
+  renderTimer();
 }
 
 function updateHabit(habitId, completed) {
@@ -550,6 +757,7 @@ function saveSettings(event) {
   state.settings.envelopes = envelopes;
   state.settings.habits = readHabitInputs().filter(habit => habit.title);
   state.settings.debtTotal = Math.max(0, Math.round(Number($('#debtTotalInput').value || 0)));
+  state.settings.dailyFocusTarget = Math.max(0, Math.round(Number($('#focusTargetInput').value || 0)));
   saveState();
   renderAll();
   toast('Settings saved.');
@@ -638,8 +846,16 @@ function registerEvents() {
   $('#incomeAmount').addEventListener('input', renderIncomePreview);
   $('#timerType').addEventListener('change', updateTimeCategoryOptions);
   $('#timeType').addEventListener('change', updateTimeCategoryOptions);
-  $('#startTimerButton').addEventListener('click', startTimer);
-  $('#stopTimerButton').addEventListener('click', stopTimer);
+  $('#focusPresets').addEventListener('click', event => {
+    const button = event.target.closest('.chip-button');
+    if (!button || button.disabled) return;
+    if (button.dataset.focusMinutes) beginTimer('countdown', Number(button.dataset.focusMinutes));
+    else if (button.dataset.breakMinutes) beginTimer('break', Number(button.dataset.breakMinutes));
+    else if (button.id === 'startOpenTimer') beginTimer('stopwatch');
+  });
+  $('#stopTimerButton').addEventListener('click', () => finishActiveTimer(false));
+  $('#dashboardTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#dashboardTaskInput').value); $('#dashboardTaskInput').value = ''; });
+  $('#consistencyTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#consistencyTaskInput').value); $('#consistencyTaskInput').value = ''; });
   $('#settingsForm').addEventListener('submit', saveSettings);
   $('#exportButton').addEventListener('click', exportData);
   $('#quickBackupButton').addEventListener('click', exportData);
@@ -655,7 +871,10 @@ function registerEvents() {
   $('#cancelIncomeEdit').addEventListener('click', cancelIncomeEdit);
   $('#cancelExpenseEdit').addEventListener('click', cancelExpenseEdit);
   $('#cancelTimeEdit').addEventListener('click', cancelTimeEdit);
-  document.addEventListener('change', event => { if (event.target.matches('[data-habit]')) updateHabit(event.target.dataset.habit, event.target.checked); });
+  document.addEventListener('change', event => {
+    if (event.target.matches('[data-habit]')) updateHabit(event.target.dataset.habit, event.target.checked);
+    if (event.target.matches('[data-task-toggle]')) toggleTask(event.target.dataset.taskToggle, event.target.checked);
+  });
   $('#dashboardPriority').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#priorityInput').value = event.target.value; });
   $('#priorityInput').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#dashboardPriority').value = event.target.value; });
   $('#dailyReflection').addEventListener('input', event => saveDayText('reflection', event.target.value));
@@ -666,12 +885,14 @@ function registerEvents() {
     const editTimeButton = event.target.closest('[data-edit-time]');
     const removeEnvelopeButton = event.target.closest('[data-remove-envelope]');
     const removeHabitButton = event.target.closest('[data-remove-habit]');
+    const taskDeleteButton = event.target.closest('[data-task-delete]');
     if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
     if (timeButton) deleteTime(timeButton.dataset.deleteTime);
     if (editTransactionButton) editTransaction(editTransactionButton.dataset.editTransaction);
     if (editTimeButton) editTimeEntry(editTimeButton.dataset.editTime);
     if (removeEnvelopeButton) removeEnvelope(removeEnvelopeButton.dataset.removeEnvelope);
     if (removeHabitButton) removeHabit(removeHabitButton.dataset.removeHabit);
+    if (taskDeleteButton) deleteTask(taskDeleteButton.dataset.taskDelete);
   });
   window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); installEvent = event; $('#installButton').hidden = false; });
   $('#installButton').addEventListener('click', async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $('#installButton').hidden = true; });
@@ -685,7 +906,9 @@ function registerPWA() {
 
 registerEvents();
 applyTheme();
+rolloverTasks();
 renderAll();
+updateTimerTaskVisibility();
 renderTimer();
-setInterval(renderTimer, 1000);
+setInterval(tickTimer, 1000);
 registerPWA();

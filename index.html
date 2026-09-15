@@ -53,8 +53,17 @@
           </section>
           <section class="panel scorecard-panel">
             <div class="panel-heading"><div><p class="eyebrow">Daily scorecard</p><h2>Three small actions</h2></div><button class="text-button" data-open-tab="consistency">Open daily →</button></div>
+            <div class="focus-goal-inline">
+              <div class="ring-holder" data-focus-ring></div>
+              <div><p class="eyebrow">Focus goal</p><small data-focus-caption class="focus-caption"></small><button class="text-button" data-open-tab="time">Start a focus block →</button></div>
+            </div>
             <div id="dashboardHabits" class="compact-habits"></div>
             <label class="priority-input">Today's one meaningful move<input id="dashboardPriority" maxlength="180" placeholder="Example: Send five DevOps outreach messages"></label>
+            <div class="task-block">
+              <div class="task-block-head"><span>Top tasks today</span><small data-task-count class="task-count"></small></div>
+              <div class="task-list" data-task-list></div>
+              <form id="dashboardTaskForm" class="task-add"><input id="dashboardTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
+            </div>
           </section>
         </div>
       </section>
@@ -104,6 +113,11 @@
           <div><p class="eyebrow">Attention audit</p><h1 id="timeTitle">Time Stolen</h1><p class="lede">Notice where time goes, then choose the next block on purpose.</p></div>
         </div>
 
+        <div class="panel focus-goal-panel focus-goal-inline">
+          <div class="ring-holder" data-focus-ring></div>
+          <div><p class="eyebrow">Focus goal today</p><small data-focus-caption class="focus-caption"></small></div>
+        </div>
+
         <div class="time-score-grid">
           <article class="metric-card"><span>Stolen today</span><strong id="stolenTodayTime">0 min</strong><small id="stolenWeek">0 min this week</small></article>
           <article class="metric-card"><span>Focused today</span><strong id="focusedTodayTime">0 min</strong><small id="focusWeek">0 min this week</small></article>
@@ -112,11 +126,19 @@
 
         <div class="two-column">
           <section class="panel timer-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Live timer</p><h2 id="timerTitle">Start an honest timer</h2></div><span class="timer-display" id="timerDisplay">00:00:00</span></div>
+            <div class="panel-heading"><div><p class="eyebrow">Focus timer</p><h2 id="timerTitle">Start a focus session</h2></div><span class="timer-display" id="timerDisplay">00:00:00</span></div>
             <div class="form-stack">
-              <div class="form-row"><label>Type<select id="timerType"><option value="stolen">Time stolen</option><option value="focus">Focused work</option></select></label><label>Category<select id="timerCategory"></select></label></div>
-              <label>What are you doing?<input id="timerNote" maxlength="160" placeholder="Optional context helps you see patterns"></label>
-              <div class="button-row"><button class="primary-button" id="startTimerButton" type="button">Start timer</button><button class="danger-button" id="stopTimerButton" type="button" disabled>Stop &amp; log</button></div>
+              <div class="form-row"><label>Type<select id="timerType"><option value="focus">Focused work</option><option value="stolen">Time stolen</option></select></label><label>Category<select id="timerCategory"></select></label></div>
+              <label id="timerTaskWrap">Focus on<select id="timerTask"></select></label>
+              <label>What are you doing? <span class="optional">optional</span><input id="timerNote" maxlength="160" placeholder="Context helps you see patterns"></label>
+              <div class="preset-row" id="focusPresets">
+                <button class="chip-button" type="button" data-focus-minutes="25">25 min</button>
+                <button class="chip-button" type="button" data-focus-minutes="50">50 min</button>
+                <button class="chip-button" type="button" data-focus-minutes="90">90 min</button>
+                <button class="chip-button" type="button" id="startOpenTimer">Open timer</button>
+                <button class="chip-button ghost" type="button" data-break-minutes="5">5 min break</button>
+              </div>
+              <button class="danger-button full-width" id="stopTimerButton" type="button" disabled>Stop &amp; log</button>
             </div>
           </section>
           <section class="panel form-panel">
@@ -149,6 +171,11 @@
             <div class="panel-heading"><div><p class="eyebrow">Today</p><h2>Three non-negotiables</h2></div><span class="date-chip" id="scorecardDate"></span></div>
             <div class="habit-list" id="habitList"></div>
             <label class="priority-input">One meaningful move<input id="priorityInput" maxlength="180" placeholder="The one thing that would make today count"></label>
+            <div class="task-block">
+              <div class="task-block-head"><span>Top tasks today</span><small data-task-count class="task-count"></small></div>
+              <div class="task-list" data-task-list></div>
+              <form id="consistencyTaskForm" class="task-add"><input id="consistencyTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
+            </div>
             <label class="priority-input">2-minute closing note<textarea id="dailyReflection" maxlength="500" placeholder="What helped? What stole time? What is tomorrow's first move?"></textarea></label>
           </section>
           <section class="panel">
@@ -173,6 +200,7 @@
               <p class="settings-group-title">Daily actions</p>
               <div id="habitSettings"></div>
               <button class="secondary-button full-width" id="addHabitButton" type="button">+ Add daily action</button>
+              <label>Daily focus target (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
               <label>Total debt currently owed (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
               <p class="small-note">Envelope percentages must equal 100. Add categories that match your real spending. Monthly targets are guidance, not permission to spend.</p>
               <button class="primary-button full-width" type="submit">Save settings</button>
