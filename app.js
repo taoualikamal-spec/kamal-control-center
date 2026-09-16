@@ -61,6 +61,7 @@ function defaultState() {
     days: {},
     months: {},
     years: {},
+    dismissedInsights: [],
     activeTimer: null,
     activeSurf: null,
     updatedAt: new Date().toISOString()
@@ -121,6 +122,7 @@ function loadState() {
     stored.timeEntries ||= [];
     stored.cravings ||= [];
     stored.days ||= {};
+    stored.dismissedInsights ||= [];
     stored.months ||= {};
     stored.years ||= {};
     stored.activeSurf ||= null;
@@ -273,7 +275,9 @@ function substancePhrase() {
   return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
 }
 
-const surfMinutes = () => Math.round(SURF_SECONDS / 60);
+// How long to wait, learned from this person's own successful waits.
+const personalWait = () => Insights.personalWaitSeconds(state, SURF_SECONDS);
+const surfMinutes = () => Math.round(personalWait() / 60);
 
 function beginSurf() {
   const substanceId = $('#cravingSubstance').value;
@@ -282,7 +286,7 @@ function beginSurf() {
     trigger: $('#cravingTrigger').value,
     intensity: Number($('#cravingIntensity').value || 3),
     startedAt: new Date().toISOString(),
-    targetSeconds: SURF_SECONDS
+    targetSeconds: personalWait()
   };
   requestNotifyPermission();
   surfNotified = false;
@@ -811,8 +815,17 @@ function renderBody() {
   $('#rescueButton').title = `I want ${want} — help me wait`;
   $('#rescueButton').setAttribute('aria-label', `I want ${want} — help me wait`);
 
+  // Level 2: the answer they most often give comes first and comes pre-picked,
+  // so the common case costs no decisions at the worst possible moment.
+  const usualSubstance = Insights.mostLikely(state.cravings.map(entry => entry.substanceId));
+  const usualTrigger = Insights.mostLikely(state.cravings.map(entry => entry.trigger));
   $('#cravingSubstance').innerHTML = state.settings.substances.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
-  if (!$('#cravingTrigger').options.length) $('#cravingTrigger').innerHTML = cravingTriggers.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+  if (usualSubstance && state.settings.substances.some(item => item.id === usualSubstance)) $('#cravingSubstance').value = usualSubstance;
+  if (!surf) {
+    const ordered = Insights.rankedOptions(cravingTriggers, state.cravings.map(entry => entry.trigger));
+    $('#cravingTrigger').innerHTML = ordered.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+    if (usualTrigger) $('#cravingTrigger').value = usualTrigger;
+  }
 
   const debriefing = Boolean(pendingDebriefId);
   $('#bodyIdle').hidden = Boolean(surf) || debriefing;
@@ -829,9 +842,17 @@ function renderBody() {
     }
   }
 
-  const lastPlan = cravingInsights().lastPlan;
-  $('#lastPlan').hidden = !lastPlan;
-  if (lastPlan) $('#lastPlanText').textContent = lastPlan;
+  // Level 1: hand back what they already told you, at the moment it is useful.
+  const own = cravingInsights();
+  $('#lastPlan').hidden = !own.lastPlan;
+  if (own.lastPlan) $('#lastPlanText').textContent = own.lastPlan;
+
+  const knowsWhatFor = own.tagTotal >= Insights.thresholds.MIN && own.tags.length;
+  $('#helpReminder').hidden = !knowsWhatFor;
+  if (knowsWhatFor) {
+    const topTag = own.tags[0][0].toLowerCase();
+    $('#helpReminder').innerHTML = `<b>This usually helps you ${escapeHtml(topTag)}.</b> Is there another way to ${escapeHtml(topTag)} right now?`;
+  }
 
   if (surf) {
     const elapsed = (Date.now() - new Date(surf.startedAt).getTime()) / 1000;
@@ -889,9 +910,11 @@ function renderHelpPanel() {
   const headline = $('#helpHeadline');
   const breakdown = $('#helpBreakdown');
 
-  if (!insights.tags.length) {
-    headline.textContent = 'Nothing here yet.';
-    breakdown.innerHTML = '<p class="small-note">Next time you use, tap what it helped with. After a few times this will show you what it is really for — and that is the thing you can start meeting another way.</p>';
+  const need = Insights.thresholds.MIN;
+  if (insights.tagTotal < need) {
+    headline.textContent = 'Not enough yet to be sure.';
+    breakdown.innerHTML = `<p class="small-note">Next time you use, tap what it helped with. This needs ${need} answers before it says anything — you have ${insights.tagTotal}. Then it will show what it is really for, which is the thing you can start meeting another way.</p>`
+      + (insights.tags.length ? insights.tags.map(([tag, count]) => `<div class="bar-row muted"><span class="bar-label">${escapeHtml(tag)}</span><span class="bar-track"><span class="bar-fill" style="width:${Math.round(count / insights.tags[0][1] * 100)}%"></span></span><span class="bar-count">${count}</span></div>`).join('') : '');
     return;
   }
 
@@ -906,34 +929,42 @@ function renderHelpPanel() {
     + `<p class="small-note">You reached for it ${topCount} ${topCount === 1 ? 'time' : 'times'} to ${topTag.toLowerCase()}. If you can find another way to ${topTag.toLowerCase()}, the want gets weaker on its own.</p>`;
 }
 
-function renderFindings() {
-  const insights = cravingInsights();
-  const findings = [];
+/* Renders findings from the engine. A claim only appears once it has enough
+   observations behind it, and it always carries the count. */
+function renderFindingsInto(selector, area, emptyText) {
+  const box = $(selector);
+  if (!box) return;
+  const all = Insights.forArea(state, area);
+  const ready = all.filter(item => item.ready);
 
-  if (insights.topReason) {
-    findings.push(`It starts with <b>${escapeHtml(insights.topReason[0].toLowerCase())}</b> more than anything else — ${insights.topReason[1]} ${insights.topReason[1] === 1 ? 'time' : 'times'} so far.`);
-  }
-  if (insights.topBand && insights.total >= 3) {
-    findings.push(`It happens most often <b>${insights.topBand[0]}</b>.`);
-  }
-  if (insights.waitedCount >= 2) {
-    findings.push(`When you waited, you usually needed about <b>${insights.avgWait} ${insights.avgWait === 1 ? 'minute' : 'minutes'}</b>. The longest was ${insights.maxWait}.`);
-  }
-  if (insights.strongCount >= 2 && insights.mildCount >= 2) {
-    const strong = insights.strongAvg;
-    const mild = insights.mildAvg;
-    const close = Math.abs(strong - mild) < 1.5;
-    findings.push(close
-      ? `A <b>strong</b> want took about ${strong.toFixed(1)} min to pass, a mild one about ${mild.toFixed(1)} min. Strong or mild, it passes in about the same time — so a strong one is not more dangerous, it just feels louder.`
-      : `A <b>strong</b> want took about ${strong.toFixed(1)} min, a mild one about ${mild.toFixed(1)} min.`);
-  }
-
-  const box = $('#cravingFindings');
-  if (!findings.length) {
-    box.innerHTML = '<p class="small-note">Add a few, including the times you used. Once there are three or four, real patterns show up here: what sets it off, what time of day, and how long you actually need to wait.</p>';
+  if (ready.length) {
+    box.innerHTML = ready.map(item => `<p class="finding" data-finding="${item.id}">
+      <button class="finding-dismiss" type="button" data-dismiss-finding="${item.id}" title="This is not right" aria-label="This is not right">×</button>
+      ${item.text}
+      <span class="finding-count">based on ${item.count} ${item.count === 1 ? 'time' : 'times'}</span>
+    </p>`).join('');
     return;
   }
-  box.innerHTML = findings.map(text => `<p class="finding">${text}</p>`).join('');
+
+  const closest = all.slice().sort((a, b) => (b.need - b.count) - (a.need - a.count)).pop();
+  box.innerHTML = closest
+    ? `<p class="small-note">${emptyText} The first one needs ${closest.need - closest.count} more — you have ${closest.count} of ${closest.need}.</p>`
+    : `<p class="small-note">${emptyText}</p>`;
+}
+
+function renderFindings() {
+  renderFindingsInto('#cravingFindings', 'urges',
+    'Patterns show up here once there is enough to be sure: what sets it off, what time of day, how long you really need to wait, and whether a strong want lasts longer than a mild one.');
+  renderFindingsInto('#timeFindings', 'time',
+    'Patterns about your time show up here: where it goes, which day your focus lands best, and what you actually spend it on.');
+}
+
+function dismissFinding(id) {
+  state.dismissedInsights = state.dismissedInsights || [];
+  if (state.dismissedInsights.indexOf(id) === -1) state.dismissedInsights.push(id);
+  saveState();
+  renderFindings();
+  toast('Hidden. Thanks — that helps me keep the rest honest.');
 }
 
 function renderHabits() {
@@ -1387,7 +1418,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';
@@ -1490,6 +1521,8 @@ function registerEvents() {
     const deleteCravingButton = event.target.closest('[data-delete-craving]');
     const gotoDayButton = event.target.closest('[data-goto-day]');
     if (gotoDayButton) { selectTab('day'); setSelectedDate(gotoDayButton.dataset.gotoDay); }
+    const dismissButton = event.target.closest('[data-dismiss-finding]');
+    if (dismissButton) dismissFinding(dismissButton.dataset.dismissFinding);
     const helpChip = event.target.closest('[data-help]');
     if (helpChip) {
       const on = helpChip.classList.toggle('on');
