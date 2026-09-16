@@ -170,6 +170,8 @@ function deleteTask(id) {
    Every craving gets logged whether or not it was acted on. A craving you gave
    into is still data worth having, so nothing here is phrased as a failure. */
 
+let pendingDebriefId = null;
+
 function substanceById(id) { return state.settings.substances.find(item => item.id === id); }
 
 function beginSurf() {
@@ -216,11 +218,44 @@ function logCraving(outcome) {
   });
   state.activeSurf = null;
   surfNotified = false;
+  const logged = state.cravings[state.cravings.length - 1];
+  // A lapse is where people quit. Answer it instead of leaving silence.
+  if (outcome !== 'rode') pendingDebriefId = logged.id;
   saveState();
   renderAll();
   if (outcome === 'rode') toast(`You rode it out. ${money(recovered)} stayed in your pocket.`);
-  else if (outcome === 'less') toast('Less than usual still counts. Logged.');
-  else toast('Logged, no judgement. Knowing the pattern is the useful part.');
+}
+
+function debriefHeadline(outcome) {
+  return outcome === 'less'
+    ? 'Less than usual is ground held. Take it.'
+    : 'That was a move against you. It is not who you are.';
+}
+
+function saveDebrief() {
+  const entry = state.cravings.find(item => item.id === pendingDebriefId);
+  if (entry) {
+    entry.debrief = {
+      before: $('#debriefBefore').value.trim(),
+      gave: $('#debriefGave').value.trim(),
+      next: $('#debriefNext').value.trim()
+    };
+  }
+  closeDebrief();
+  saveState();
+  renderAll();
+  toast('Noted. That is how the pattern becomes known.');
+}
+
+function skipDebrief() {
+  closeDebrief();
+  renderBody();
+  toast('Fine. It is logged either way.');
+}
+
+function closeDebrief() {
+  pendingDebriefId = null;
+  ['#debriefBefore', '#debriefGave', '#debriefNext'].forEach(selector => { $(selector).value = ''; });
 }
 
 function cravingsOn(dateFilter) { return state.cravings.filter(dateFilter); }
@@ -538,8 +573,14 @@ function renderBody() {
   $('#cravingSubstance').innerHTML = state.settings.substances.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
   if (!$('#cravingTrigger').options.length) $('#cravingTrigger').innerHTML = cravingTriggers.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
 
-  $('#bodyIdle').hidden = Boolean(surf);
-  $('#bodySurf').hidden = !surf;
+  const debriefing = Boolean(pendingDebriefId);
+  $('#bodyIdle').hidden = Boolean(surf) || debriefing;
+  $('#bodySurf').hidden = !surf || debriefing;
+  $('#bodyDebrief').hidden = !debriefing;
+  if (debriefing) {
+    const entry = state.cravings.find(item => item.id === pendingDebriefId);
+    $('#debriefHeadline').textContent = debriefHeadline(entry?.outcome);
+  }
 
   if (surf) {
     const elapsed = (Date.now() - new Date(surf.startedAt).getTime()) / 1000;
@@ -574,6 +615,19 @@ function renderBody() {
     <td class="number">${Math.round((entry.secondsSurfed || 0) / 60)} min</td>
     <td class="row-actions"><button class="delete-button" data-delete-craving="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td>
   </tr>`).join('') : '<tr><td colspan="6" class="empty-row">Nothing logged yet. The first honest entry is the whole start.</td></tr>';
+
+  const notes = state.cravings
+    .filter(entry => entry.debrief && (entry.debrief.before || entry.debrief.gave || entry.debrief.next))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 6);
+  $('#fieldNotes').innerHTML = notes.length ? notes.map(entry => {
+    const rows = [
+      entry.debrief.before && `<p><b>Just before:</b> ${escapeHtml(entry.debrief.before)}</p>`,
+      entry.debrief.gave && `<p><b>It gave me:</b> ${escapeHtml(entry.debrief.gave)}</p>`,
+      entry.debrief.next && `<p><b>Next move:</b> ${escapeHtml(entry.debrief.next)}</p>`
+    ].filter(Boolean).join('');
+    return `<article class="field-note"><span class="field-note-date">${dateLabel(entry.date)}</span><div>${rows}</div></article>`;
+  }).join('') : '<p class="small-note">Notes you write after a hard moment collect here. Over time they show you what the pull is actually for.</p>';
 
   $('#cravingPattern').textContent = stats.topTrigger
     ? `${stats.topTrigger.toLowerCase()} is what sets it off most this week. Plan for that one moment, not for the whole week.`
@@ -1085,6 +1139,8 @@ function registerEvents() {
   $('#addSubstanceButton').addEventListener('click', addSubstance);
   $('#startSurfButton').addEventListener('click', beginSurf);
   $('#cancelSurfButton').addEventListener('click', cancelSurf);
+  $('#saveDebriefButton').addEventListener('click', saveDebrief);
+  $('#skipDebriefButton').addEventListener('click', skipDebrief);
   $('#surfOutcomes').addEventListener('click', event => {
     const button = event.target.closest('[data-outcome]');
     if (button) logCraving(button.dataset.outcome);

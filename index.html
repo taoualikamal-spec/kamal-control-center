@@ -205,6 +205,25 @@
             </div>
             <button class="text-button full-width-text" id="cancelSurfButton" type="button">Stop without logging</button>
           </div>
+
+          <div id="bodyDebrief" hidden>
+            <div class="debrief-open">
+              <p class="debrief-line" id="debriefHeadline"></p>
+              <p class="debrief-sub">A long war is won by returning to the field, not by never being hit. You came back to log it — that is the return.</p>
+            </div>
+            <div class="form-stack">
+              <label>What was happening just before? <span class="optional">optional</span><input id="debriefBefore" maxlength="160" placeholder="Where you were, who with, what had just happened"></label>
+              <label>What did it give you? <span class="optional">optional</span><input id="debriefGave" maxlength="160" placeholder="Calm, a break, company, escape from something"></label>
+              <label>What's the next smallest move? <span class="optional">optional</span><input id="debriefNext" maxlength="160" placeholder="Something doable in the next ten minutes"></label>
+              <button class="primary-button full-width" id="saveDebriefButton" type="button">Save the note</button>
+              <button class="text-button full-width-text" id="skipDebriefButton" type="button">Not now</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">Field notes</p><h2>What the pull is for</h2></div></div>
+          <div id="fieldNotes" class="field-notes"></div>
         </section>
 
         <section class="panel">

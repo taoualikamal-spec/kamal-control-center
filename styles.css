@@ -415,3 +415,30 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
   .surf-script { font-size: .94rem; padding: 13px 14px; }
 }
 @media (max-width: 380px) { .bottom-nav .nav-item { font-size: .53rem; } }
+
+/* ---------- Lapse response ----------
+   The moment people quit. It gets the warmest surface in the app, and no red. */
+.debrief-open {
+  background: var(--rescue-soft);
+  border-radius: 11px;
+  padding: 20px 20px 18px;
+  margin-bottom: 18px;
+}
+.debrief-line { margin: 0 0 7px; font-size: 1.18rem; font-weight: 750; line-height: 1.35; color: var(--text); }
+.debrief-sub { margin: 0; font-size: .89rem; line-height: 1.5; color: var(--muted); }
+
+.field-notes { display: grid; gap: 10px; }
+.field-note {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-3);
+}
+.field-note-date { font-size: .72rem; color: var(--quiet); padding-top: 2px; }
+.field-note p { margin: 0 0 4px; font-size: .88rem; line-height: 1.45; color: var(--muted); }
+.field-note p:last-child { margin-bottom: 0; }
+.field-note b { color: var(--text); font-weight: 700; }
+@media (max-width: 580px) { .field-note { grid-template-columns: 1fr; gap: 5px; } }
