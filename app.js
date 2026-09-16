@@ -260,6 +260,17 @@ let pendingDebriefId = null;
 
 function substanceById(id) { return state.settings.substances.find(item => item.id === id); }
 
+// "cigarettes or weed" — built from what this person actually tracks, so the
+// button names the real feeling instead of an abstract one.
+function substancePhrase() {
+  const names = state.settings.substances.map(item => String(item.name || '').trim().toLowerCase()).filter(Boolean);
+  if (!names.length) return 'it';
+  if (names.length === 1) return names[0];
+  return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
+}
+
+const surfMinutes = () => Math.round(SURF_SECONDS / 60);
+
 function beginSurf() {
   const substanceId = $('#cravingSubstance').value;
   state.activeSurf = {
@@ -531,7 +542,9 @@ function renderDay() {
   $('#stolenToday').textContent = `${time.stolen} min`;
   $('#stolenDetail').textContent = time.stolen ? 'Now choose what to do next.' : 'Just notice it. No blame.';
   $('#urgesToday').textContent = ridden;
-  $('#urgesDetail').textContent = ridden ? 'You waited. That is real.' : 'Every one you write down helps.';
+  $('#urgesDetail').textContent = ridden
+    ? `You wanted ${substancePhrase()} and waited instead.`
+    : `When you want ${substancePhrase()}, wait instead of fighting it.`;
 
   renderHabits();
   renderFocusGoal();
@@ -731,6 +744,15 @@ function renderBody() {
   const surf = state.activeSurf;
   const stats = cravingStats();
 
+  const want = substancePhrase();
+  const mins = surfMinutes();
+  $('#wantQuestion').textContent = `Do you want ${want} right now?`;
+  $('#waitExplain').textContent = `A strong want lasts a few minutes, then it gets weaker on its own. This screen stays with you for ${mins} minutes so you do not have to fight it alone.`;
+  $('#startSurfButton').textContent = `Wait ${mins} minutes until it passes`;
+  $('#dayRescueButton').textContent = `I want ${want}`;
+  $('#rescueButton').title = `I want ${want} — help me wait`;
+  $('#rescueButton').setAttribute('aria-label', `I want ${want} — help me wait`);
+
   $('#cravingSubstance').innerHTML = state.settings.substances.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
   if (!$('#cravingTrigger').options.length) $('#cravingTrigger').innerHTML = cravingTriggers.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
 
@@ -749,7 +771,7 @@ function renderBody() {
     const fraction = Math.min(1, elapsed / surf.targetSeconds);
     const passed = remaining <= 0;
     $('#surfDisplay').textContent = formatClock(remaining);
-    $('#surfTitle').textContent = passed ? 'The time is up' : 'Waiting';
+    $('#surfTitle').textContent = passed ? 'The time is up' : 'Waiting — it will pass';
     $('#surfContext').textContent = `${substanceById(surf.substanceId)?.name || 'Craving'} · ${surf.trigger}`;
     $('#surfScript').textContent = passed
       ? 'The time is up. Whatever happened, say it plainly. This list is for you, not against you.'

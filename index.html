@@ -36,7 +36,7 @@
             <p class="lede">Small things, done today. One is enough.</p>
           </div>
           <div class="heading-actions">
-            <button class="rescue-button compact" data-open-tab="body">Help me wait</button>
+            <button class="rescue-button compact" id="dayRescueButton" data-open-tab="body">I want it now</button>
             <button class="primary-button" data-open-tab="month">+ Add money</button>
           </div>
         </div>
@@ -233,7 +233,7 @@
       <!-- ============ WAITING (urges) ============ -->
       <section id="body" class="page" aria-labelledby="bodyTitle">
         <div class="page-heading">
-          <div><p class="eyebrow">Waiting</p><h1 id="bodyTitle">Wait it out</h1><p class="lede">The feeling gets strong, then it gets weak again. You only have to wait a few minutes.</p></div>
+          <div><p class="eyebrow">Waiting</p><h1 id="bodyTitle">Wait until it passes</h1><p class="lede">When you want to smoke or use, the feeling gets strong, then it gets weak again by itself. You do not have to beat it. You only have to wait a few minutes.</p></div>
           <button class="text-button" data-open-tab="day">← Back to today</button>
         </div>
 
@@ -241,14 +241,15 @@
 
         <section class="panel surf-panel">
           <div id="bodyIdle">
-            <div class="panel-heading"><div><p class="eyebrow">Right now</p><h2>Do you want to smoke or use?</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Right now</p><h2 id="wantQuestion">Do you want it right now?</h2></div></div>
             <div class="form-stack">
+              <p class="how-to" id="waitExplain"></p>
               <div class="form-row">
                 <label>Want what?<select id="cravingSubstance"></select></label>
                 <label>Why now?<select id="cravingTrigger"></select></label>
               </div>
               <label>How strong is it? <span class="optional">1 small — 5 very strong</span><input id="cravingIntensity" type="range" min="1" max="5" step="1" value="3"></label>
-              <button class="rescue-button" id="startSurfButton" type="button">Help me wait</button>
+              <button class="rescue-button" id="startSurfButton" type="button">Wait until it passes</button>
               <p class="small-note">Write it down even if you end up using. Nothing here is a score against you.</p>
             </div>
           </div>
