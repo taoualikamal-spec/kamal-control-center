@@ -34,7 +34,10 @@
             <h1 id="dashboardTitle">Today</h1>
             <p class="lede">Record money. Notice time. Finish one useful thing.</p>
           </div>
-          <button class="primary-button" data-open-tab="money">+ Record money</button>
+          <div class="heading-actions">
+            <button class="rescue-button compact" data-open-tab="body">I'm craving</button>
+            <button class="primary-button" data-open-tab="money">+ Record money</button>
+          </div>
         </div>
 
         <div class="insight-banner" id="insightBanner"></div>
@@ -42,7 +45,7 @@
         <section class="metric-grid" aria-label="Today at a glance">
           <article class="metric-card"><span>This month received</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Record the money you actually receive.</small></article>
           <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD total debt</small></article>
-          <article class="metric-card"><span>Time stolen today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Track it honestly, without shame.</small></article>
+          <article class="metric-card"><span>Drifted today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Track it honestly, without shame.</small></article>
           <article class="metric-card"><span>Focus today</span><strong id="focusToday">0 min</strong><small id="focusDetail">Protect one useful block.</small></article>
         </section>
 
@@ -110,7 +113,7 @@
 
       <section id="time" class="page" aria-labelledby="timeTitle">
         <div class="page-heading">
-          <div><p class="eyebrow">Attention audit</p><h1 id="timeTitle">Time Stolen</h1><p class="lede">Notice where time goes, then choose the next block on purpose.</p></div>
+          <div><p class="eyebrow">Attention</p><h1 id="timeTitle">Where your time goes</h1><p class="lede">See it plainly, without a verdict, then choose the next block on purpose.</p></div>
         </div>
 
         <div class="panel focus-goal-panel focus-goal-inline">
@@ -119,16 +122,16 @@
         </div>
 
         <div class="time-score-grid">
-          <article class="metric-card"><span>Stolen today</span><strong id="stolenTodayTime">0 min</strong><small id="stolenWeek">0 min this week</small></article>
+          <article class="metric-card"><span>Drifted today</span><strong id="stolenTodayTime">0 min</strong><small id="stolenWeek">0 min this week</small></article>
           <article class="metric-card"><span>Focused today</span><strong id="focusedTodayTime">0 min</strong><small id="focusWeek">0 min this week</small></article>
-          <article class="metric-card"><span>Biggest thief</span><strong id="biggestThief">—</strong><small id="biggestThiefDetail">Log a few days to spot a pattern.</small></article>
+          <article class="metric-card"><span>Most common drift</span><strong id="biggestThief">—</strong><small id="biggestThiefDetail">Log a few days to spot a pattern.</small></article>
         </div>
 
         <div class="two-column">
           <section class="panel timer-panel">
             <div class="panel-heading"><div><p class="eyebrow">Focus timer</p><h2 id="timerTitle">Start a focus session</h2></div><span class="timer-display" id="timerDisplay">00:00:00</span></div>
             <div class="form-stack">
-              <div class="form-row"><label>Type<select id="timerType"><option value="focus">Focused work</option><option value="stolen">Time stolen</option></select></label><label>Category<select id="timerCategory"></select></label></div>
+              <div class="form-row"><label>Type<select id="timerType"><option value="focus">Focused work</option><option value="stolen">Drifted time</option></select></label><label>Category<select id="timerCategory"></select></label></div>
               <label id="timerTaskWrap">Focus on<select id="timerTask"></select></label>
               <label>What are you doing? <span class="optional">optional</span><input id="timerNote" maxlength="160" placeholder="Context helps you see patterns"></label>
               <div class="preset-row" id="focusPresets">
@@ -144,7 +147,7 @@
           <section class="panel form-panel">
             <div class="panel-heading"><div><p class="eyebrow">Manual entry</p><h2>Add time already gone</h2></div></div>
             <form id="timeForm" class="form-stack">
-              <div class="form-row"><label>Type<select id="timeType"><option value="stolen">Time stolen</option><option value="focus">Focused work</option></select></label><label>Minutes<input id="timeMinutes" type="number" min="1" max="1440" required placeholder="30"></label></div>
+              <div class="form-row"><label>Type<select id="timeType"><option value="stolen">Drifted time</option><option value="focus">Focused work</option></select></label><label>Minutes<input id="timeMinutes" type="number" min="1" max="1440" required placeholder="30"></label></div>
               <div class="form-row"><label>Category<select id="timeCategory"></select></label><label>Date<input id="timeDate" type="date" required></label></div>
               <label>Note <span class="optional">optional</span><input id="timeNote" maxlength="160" placeholder="What happened before it started?"></label>
               <button class="secondary-button full-width" type="submit">Log time</button>
@@ -161,6 +164,57 @@
         <section class="panel transactions-panel">
           <div class="panel-heading"><div><p class="eyebrow">Recent activity</p><h2>Time log</h2></div></div>
           <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Note</th><th class="number">Minutes</th><th></th></tr></thead><tbody id="timeRows"></tbody></table></div>
+        </section>
+      </section>
+
+      <section id="body" class="page" aria-labelledby="bodyTitle">
+        <div class="page-heading">
+          <div><p class="eyebrow">Urges</p><h1 id="bodyTitle">Ride the wave</h1><p class="lede">A craving climbs, crests and falls. You don't have to beat it — you only have to outlast a few minutes.</p></div>
+        </div>
+
+        <section class="time-score-grid" id="cravingStats" aria-label="Urge summary"></section>
+
+        <section class="panel surf-panel">
+          <div id="bodyIdle">
+            <div class="panel-heading"><div><p class="eyebrow">Right now</p><h2>Feeling the pull?</h2></div></div>
+            <div class="form-stack">
+              <div class="form-row">
+                <label>What for<select id="cravingSubstance"></select></label>
+                <label>What set it off<select id="cravingTrigger"></select></label>
+              </div>
+              <label>How strong is it? <span class="optional">1 quiet — 5 loud</span><input id="cravingIntensity" type="range" min="1" max="5" step="1" value="3"></label>
+              <button class="rescue-button" id="startSurfButton" type="button">I'm craving — ride it out</button>
+              <p class="small-note">Logging counts whether or not you use. Nothing here is scored against you.</p>
+            </div>
+          </div>
+
+          <div id="bodySurf" hidden>
+            <div class="panel-heading"><div><p class="eyebrow" id="surfContext"></p><h2 id="surfTitle">Riding it out</h2></div><span class="timer-display countdown" id="surfDisplay">05:00</span></div>
+            <div class="wave-wrap">
+              <svg viewBox="0 0 300 80" aria-hidden="true">
+                <path class="wave-path" d="M10 70 C 80 70, 105 14, 150 14 S 220 70, 290 70" fill="none" stroke-width="2"></path>
+                <circle class="wave-dot" id="surfDot" cx="10" cy="70" r="6"></circle>
+              </svg>
+              <p class="crest-note" id="surfCrest"></p>
+            </div>
+            <p class="surf-script" id="surfScript"></p>
+            <div class="outcome-row" id="surfOutcomes">
+              <button class="chip-button" type="button" data-outcome="rode">I rode it out</button>
+              <button class="chip-button" type="button" data-outcome="less">I used less</button>
+              <button class="chip-button ghost" type="button" data-outcome="used">I used</button>
+            </div>
+            <button class="text-button full-width-text" id="cancelSurfButton" type="button">Stop without logging</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">Pattern</p><h2>What sets it off</h2></div></div>
+          <p class="small-note" id="cravingPattern"></p>
+        </section>
+
+        <section class="panel transactions-panel">
+          <div class="panel-heading"><div><p class="eyebrow">History</p><h2>Urge log</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th>What</th><th>Trigger</th><th>Outcome</th><th class="number">Rode</th><th></th></tr></thead><tbody id="cravingRows"></tbody></table></div>
         </section>
       </section>
 
@@ -200,6 +254,9 @@
               <p class="settings-group-title">Daily actions</p>
               <div id="habitSettings"></div>
               <button class="secondary-button full-width" id="addHabitButton" type="button">+ Add daily action</button>
+              <p class="settings-group-title">Cutting down</p>
+              <div id="substanceSettings"></div>
+              <button class="secondary-button full-width" id="addSubstanceButton" type="button">+ Add something you're cutting down</button>
               <label>Daily focus target (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
               <label>Total debt currently owed (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
               <p class="small-note">Envelope percentages must equal 100. Add categories that match your real spending. Monthly targets are guidance, not permission to spend.</p>
@@ -224,6 +281,7 @@
       <button class="nav-item active" data-tab="dashboard"><span>⌂</span>Home</button>
       <button class="nav-item" data-tab="money"><span>◈</span>Money</button>
       <button class="nav-item" data-tab="time"><span>◷</span>Time</button>
+      <button class="nav-item" data-tab="body"><span>≈</span>Body</button>
       <button class="nav-item" data-tab="consistency"><span>✓</span>Daily</button>
       <button class="nav-item" data-tab="settings"><span>⚙</span>Setup</button>
     </nav>

@@ -20,16 +20,42 @@ const timeCategories = {
   focus: ['Paid work', 'Income building', 'Learning', 'Product work', 'Family responsibility', 'Other']
 };
 
+// Compassionate labels. Storage keys stay 'stolen'/'focus' so old data still loads.
+const timeTypeLabel = { stolen: 'Drifted', focus: 'Focus' };
+
+const defaultSubstances = [
+  { id: 'cigarettes', name: 'Cigarettes', costPerUse: 3 },
+  { id: 'cannabis', name: 'Cannabis', costPerUse: 30 }
+];
+
+const cravingTriggers = ['Stress', 'Money worry', 'Boredom', 'After food', 'With people', 'Tired', 'Low mood', 'Usual time', 'Other'];
+
+// Rotating guidance during an urge surf. The wave crests and falls; the job is to be occupied, not strong.
+const surfScript = [
+  'This will peak and pass. You don’t have to fight it — just don’t feed it.',
+  'Breathe in for 4. Hold for 4. Out for 6. Again.',
+  'Where do you feel it in your body? Name the place. Watch it instead of arguing with it.',
+  'Notice it rising. Rising is not the same as winning.',
+  'Move if you can — two minutes of walking takes the edge off. That is not a trick, it is physiology.',
+  'You are not resisting forever. Only for these few minutes.',
+  'The wave is cresting. It always comes down.',
+  'Almost through. Whatever happens next, logging this was the useful part.'
+];
+
+const SURF_SECONDS = 300;
+
 const envelopePalette = ['#69a9ff', '#ba9aff', '#ff9b70', '#53d6ad', '#f7c968', '#fa7888', '#8abaff', '#c7aaff'];
 
 function defaultState() {
   return {
     version: 1,
-    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), debtTotal: 45000, dailyFocusTarget: 120 },
+    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), substances: structuredClone(defaultSubstances), debtTotal: 45000, dailyFocusTarget: 120 },
     transactions: [],
     timeEntries: [],
+    cravings: [],
     days: {},
     activeTimer: null,
+    activeSurf: null,
     updatedAt: new Date().toISOString()
   };
 }
@@ -37,6 +63,7 @@ function defaultState() {
 function normalizeSettings(settings) {
   settings.envelopes = (settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
   settings.habits = (settings.habits && settings.habits.length ? settings.habits : structuredClone(defaultHabits)).map(item => ({ detail: '', ...item }));
+  settings.substances = (settings.substances && settings.substances.length ? settings.substances : structuredClone(defaultSubstances)).map(item => ({ costPerUse: 0, ...item }));
   settings.debtTotal = Number(settings.debtTotal ?? 45000);
   settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
   return settings;
@@ -49,7 +76,9 @@ function loadState() {
     normalizeSettings(stored.settings);
     stored.transactions ||= [];
     stored.timeEntries ||= [];
+    stored.cravings ||= [];
     stored.days ||= {};
+    stored.activeSurf ||= null;
     return stored;
   } catch { return defaultState(); }
 }
@@ -135,6 +164,84 @@ function deleteTask(id) {
   saveState();
   renderTasks();
   updateTimerTaskOptions();
+}
+
+/* ---------- Urges: capture, ride, log ----------
+   Every craving gets logged whether or not it was acted on. A craving you gave
+   into is still data worth having, so nothing here is phrased as a failure. */
+
+function substanceById(id) { return state.settings.substances.find(item => item.id === id); }
+
+function beginSurf() {
+  const substanceId = $('#cravingSubstance').value;
+  state.activeSurf = {
+    substanceId,
+    trigger: $('#cravingTrigger').value,
+    intensity: Number($('#cravingIntensity').value || 3),
+    startedAt: new Date().toISOString(),
+    targetSeconds: SURF_SECONDS
+  };
+  requestNotifyPermission();
+  surfNotified = false;
+  saveState();
+  renderBody();
+  toast('Stay here. It crests and falls.');
+}
+
+function cancelSurf() {
+  state.activeSurf = null;
+  surfNotified = false;
+  saveState();
+  renderBody();
+  toast('Stopped. No score kept.');
+}
+
+function logCraving(outcome) {
+  const surf = state.activeSurf;
+  const substanceId = surf ? surf.substanceId : $('#cravingSubstance').value;
+  const substance = substanceById(substanceId);
+  const seconds = surf ? Math.round((Date.now() - new Date(surf.startedAt).getTime()) / 1000) : 0;
+  const recovered = outcome === 'rode' ? Number(substance?.costPerUse || 0) : 0;
+  state.cravings.push({
+    id: makeId(),
+    date: today(),
+    substanceId,
+    substance: substance?.name || 'Craving',
+    trigger: surf ? surf.trigger : $('#cravingTrigger').value,
+    intensity: surf ? surf.intensity : Number($('#cravingIntensity').value || 3),
+    outcome,
+    secondsSurfed: seconds,
+    recovered,
+    createdAt: new Date().toISOString()
+  });
+  state.activeSurf = null;
+  surfNotified = false;
+  saveState();
+  renderAll();
+  if (outcome === 'rode') toast(`You rode it out. ${money(recovered)} stayed in your pocket.`);
+  else if (outcome === 'less') toast('Less than usual still counts. Logged.');
+  else toast('Logged, no judgement. Knowing the pattern is the useful part.');
+}
+
+function cravingsOn(dateFilter) { return state.cravings.filter(dateFilter); }
+function recoveredTotal(entries = state.cravings) { return entries.reduce((sum, entry) => sum + Number(entry.recovered || 0), 0); }
+
+function cravingStats() {
+  const week = new Set(weekDates());
+  const recent = cravingsOn(entry => week.has(entry.date));
+  const acted = recent.filter(entry => entry.outcome !== 'used');
+  const triggers = recent.reduce((map, entry) => ({ ...map, [entry.trigger]: (map[entry.trigger] || 0) + 1 }), {});
+  const topTrigger = Object.entries(triggers).sort((a, b) => b[1] - a[1])[0];
+  return {
+    weekCount: recent.length,
+    rodeCount: recent.filter(entry => entry.outcome === 'rode').length,
+    rideRate: recent.length ? Math.round(acted.length / recent.length * 100) : 0,
+    topTrigger: topTrigger ? topTrigger[0] : null,
+    topTriggerCount: topTrigger ? topTrigger[1] : 0,
+    recoveredMonth: recoveredTotal(cravingsOn(entry => monthKey(entry.date) === monthKey())),
+    recoveredAll: recoveredTotal(),
+    rodeAll: state.cravings.filter(entry => entry.outcome === 'rode').length
+  };
 }
 
 function todayFocusOnTasks() {
@@ -375,13 +482,13 @@ function renderWeeklyBars() {
     const focusHeight = item.focus / max * 100;
     const stolenHeight = item.stolen / max * 100;
     const label = new Date(`${item.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1);
-    return `<div class="day-bar"><div class="bar-stack" title="${dateLabel(item.date)}: ${item.focus} focus / ${item.stolen} stolen minutes"><div class="bar-focus" style="height:${focusHeight}%"></div><div class="bar-stolen" style="height:${stolenHeight}%"></div></div><b>${label}</b><span>${item.focus + item.stolen}m</span></div>`;
+    return `<div class="day-bar"><div class="bar-stack" title="${dateLabel(item.date)}: ${item.focus} min focus / ${item.stolen} min drifted"><div class="bar-focus" style="height:${focusHeight}%"></div><div class="bar-stolen" style="height:${stolenHeight}%"></div></div><b>${label}</b><span>${item.focus + item.stolen}m</span></div>`;
   }).join('');
 }
 
 function renderTimeRows() {
   const entries = state.timeEntries.slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`)).slice(0, 25);
-  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'negative'}">${entry.type === 'focus' ? 'Focus' : 'Stolen'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}${entry.task ? ` <span class="task-tag">${escapeHtml(entry.task)}</span>` : ''}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
+  $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'drifted'}">${timeTypeLabel[entry.type] || 'Logged'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}${entry.task ? ` <span class="task-tag">${escapeHtml(entry.task)}</span>` : ''}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Edit entry" aria-label="Edit entry">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time entries yet. Start the timer or add one honest estimate.</td></tr>';
 }
 
 function updateTimerTaskOptions() {
@@ -422,6 +529,55 @@ function renderTimer() {
     display.classList.toggle('countdown', active.mode !== 'break');
     display.textContent = formatClock(remaining);
   }
+}
+
+function renderBody() {
+  const surf = state.activeSurf;
+  const stats = cravingStats();
+
+  $('#cravingSubstance').innerHTML = state.settings.substances.map(item => `<option value="${item.id}">${escapeHtml(item.name)}</option>`).join('');
+  if (!$('#cravingTrigger').options.length) $('#cravingTrigger').innerHTML = cravingTriggers.map(item => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('');
+
+  $('#bodyIdle').hidden = Boolean(surf);
+  $('#bodySurf').hidden = !surf;
+
+  if (surf) {
+    const elapsed = (Date.now() - new Date(surf.startedAt).getTime()) / 1000;
+    const remaining = Math.max(0, surf.targetSeconds - elapsed);
+    const fraction = Math.min(1, elapsed / surf.targetSeconds);
+    const passed = remaining <= 0;
+    $('#surfDisplay').textContent = formatClock(remaining);
+    $('#surfTitle').textContent = passed ? 'The window has passed' : 'Riding it out';
+    $('#surfContext').textContent = `${substanceById(surf.substanceId)?.name || 'Craving'} · ${surf.trigger}`;
+    $('#surfScript').textContent = passed
+      ? 'That was the window. Whatever happened, tell it straight — the log is for you, not about you.'
+      : surfScript[Math.min(surfScript.length - 1, Math.floor(fraction * surfScript.length))];
+    const x = 10 + fraction * 280;
+    const y = 70 - 56 * Math.exp(-((x - 150) ** 2) / (2 * 45 ** 2));
+    $('#surfDot').setAttribute('cx', x.toFixed(1));
+    $('#surfDot').setAttribute('cy', y.toFixed(1));
+    $('#surfCrest').textContent = fraction > 0.55 ? 'Past the crest — it falls from here.' : 'Climbing. It does not keep climbing.';
+  }
+
+  $('#cravingStats').innerHTML = `
+    <article class="metric-card"><span>Ridden out</span><strong>${stats.rodeAll}</strong><small>${stats.weekCount ? `${stats.rodeCount} of ${stats.weekCount} this week` : 'Log the next one, however it goes.'}</small></article>
+    <article class="metric-card"><span>Money kept</span><strong>${money(stats.recoveredAll)}</strong><small>${money(stats.recoveredMonth)} this month</small></article>
+    <article class="metric-card"><span>Most common trigger</span><strong>${stats.topTrigger ? escapeHtml(stats.topTrigger) : '—'}</strong><small>${stats.topTrigger ? `${stats.topTriggerCount} times this week` : 'A few entries will show the pattern.'}</small></article>`;
+
+  const entries = state.cravings.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 25);
+  const outcomeLabel = { rode: 'Rode it out', less: 'Used less', used: 'Used' };
+  $('#cravingRows').innerHTML = entries.length ? entries.map(entry => `<tr>
+    <td>${dateLabel(entry.date)}</td>
+    <td>${escapeHtml(entry.substance)}</td>
+    <td>${escapeHtml(entry.trigger)}</td>
+    <td><span class="outcome-chip ${entry.outcome}">${outcomeLabel[entry.outcome] || 'Logged'}</span></td>
+    <td class="number">${Math.round((entry.secondsSurfed || 0) / 60)} min</td>
+    <td class="row-actions"><button class="delete-button" data-delete-craving="${entry.id}" title="Delete entry" aria-label="Delete entry">×</button></td>
+  </tr>`).join('') : '<tr><td colspan="6" class="empty-row">Nothing logged yet. The first honest entry is the whole start.</td></tr>';
+
+  $('#cravingPattern').textContent = stats.topTrigger
+    ? `${stats.topTrigger.toLowerCase()} is what sets it off most this week. Plan for that one moment, not for the whole week.`
+    : 'Log a few — including the ones you gave into. The pattern is the point, not the score.';
 }
 
 function renderHabits() {
@@ -485,16 +641,27 @@ function renderFocusGoal() {
   $$('[data-focus-caption]').forEach(node => { node.textContent = caption; });
 }
 
-function streakFor(habitId) {
-  let current = new Date(`${today()}T12:00:00`);
-  let count = 0;
-  while (state.days[current.toISOString().slice(0, 10)]?.habits?.[habitId]) { count++; current = new Date(current.getTime() - DAY_MS); }
-  return count;
+function lastDates(count) {
+  const result = [];
+  const current = new Date(`${today()}T12:00:00`);
+  for (let i = 0; i < count; i++) result.push(new Date(current.getTime() - i * DAY_MS).toISOString().slice(0, 10));
+  return result;
+}
+
+/* Rolling completion instead of a consecutive streak. A streak that resets to zero
+   turns one missed day into a reason to quit; a rate treats it as one data point. */
+function completionFor(habitId) {
+  const week = lastDates(7).filter(date => state.days[date]?.habits?.[habitId]).length;
+  const month = lastDates(30).filter(date => state.days[date]?.habits?.[habitId]).length;
+  return { week, month, monthPct: Math.round(month / 30 * 100) };
 }
 
 function renderStreaks() {
   const habits = state.settings.habits;
-  $('#streakCards').innerHTML = habits.map(habit => `<article class="streak-card"><strong>${streakFor(habit.id)}</strong><span>day streak · ${escapeHtml(habit.title)}</span></article>`).join('');
+  $('#streakCards').innerHTML = habits.map(habit => {
+    const rate = completionFor(habit.id);
+    return `<article class="streak-card"><strong>${rate.week}<em>/7</em></strong><span>${escapeHtml(habit.title)} · ${rate.monthPct}% of the last 30 days</span></article>`;
+  }).join('');
   $('#weekChecks').innerHTML = weekDates().map(date => {
     const checked = habits.filter(habit => state.days[date]?.habits?.[habit.id]).length;
     const label = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1);
@@ -514,6 +681,11 @@ function renderSettings() {
     <label>Detail <span class="optional">optional</span><input data-habit-detail="${habit.id}" maxlength="120" value="${escapeHtml(habit.detail || '')}"></label>
     <button class="delete-button" type="button" data-remove-habit="${habit.id}" title="Remove daily action" aria-label="Remove ${escapeHtml(habit.title)}">×</button>
   </div>`).join('') || '<p class="small-note">No daily actions yet. Add one below.</p>';
+  $('#substanceSettings').innerHTML = state.settings.substances.map(substance => `<div class="settings-row habit-settings-row">
+    <label>What you're cutting down<input data-substance-name="${substance.id}" maxlength="40" value="${escapeHtml(substance.name)}"></label>
+    <label>Cost each time (MAD)<input data-substance-cost="${substance.id}" type="number" min="0" step="1" value="${Number(substance.costPerUse || 0)}"></label>
+    <button class="delete-button" type="button" data-remove-substance="${substance.id}" title="Remove" aria-label="Remove ${escapeHtml(substance.name)}">×</button>
+  </div>`).join('') || '<p class="small-note">Nothing tracked yet. Add one below.</p>';
   $('#debtTotalInput').value = state.settings.debtTotal;
   $('#focusTargetInput').value = state.settings.dailyFocusTarget;
   $('#storageNote').textContent = state.updatedAt ? `Saved locally: ${new Date(state.updatedAt).toLocaleString()}` : 'No backup created yet.';
@@ -529,6 +701,7 @@ function renderAll() {
   updateTimeCategoryOptions();
   updateTimerTaskOptions();
   renderTime();
+  renderBody();
   renderSettings();
 }
 
@@ -710,7 +883,19 @@ function finishActiveTimer(auto) {
   toast(`${minutes} minutes ${active.type === 'focus' ? 'of focus protected' : 'noticed and logged'}.`);
 }
 
+let surfNotified = false;
+
 function tickTimer() {
+  const surf = state.activeSurf;
+  if (surf) {
+    const remaining = surf.targetSeconds - (Date.now() - new Date(surf.startedAt).getTime()) / 1000;
+    if (remaining <= 0 && !surfNotified) {
+      surfNotified = true;
+      playChime();
+      notify('The wave passed', 'However it went, log it. That is the useful part.');
+    }
+    renderBody();
+  }
   const active = state.activeTimer;
   if (active && active.mode !== 'stopwatch') {
     const remaining = active.targetMinutes * 60 - (Date.now() - new Date(active.startedAt).getTime()) / 1000;
@@ -747,6 +932,31 @@ function readHabitInputs() {
   }));
 }
 
+function readSubstanceInputs() {
+  return state.settings.substances.map(substance => ({
+    ...substance,
+    name: ($(`[data-substance-name="${substance.id}"]`)?.value.trim()) || substance.name,
+    costPerUse: Math.max(0, Number($(`[data-substance-cost="${substance.id}"]`)?.value ?? substance.costPerUse))
+  }));
+}
+
+function addSubstance() {
+  state.settings.envelopes = readEnvelopeInputs();
+  state.settings.habits = readHabitInputs();
+  state.settings.substances = readSubstanceInputs();
+  state.settings.substances.push({ id: makeId(), name: 'Something else', costPerUse: 0 });
+  renderSettings();
+  toast('Added. Name it and set its cost, then save.');
+}
+
+function removeSubstance(id) {
+  state.settings.envelopes = readEnvelopeInputs();
+  state.settings.habits = readHabitInputs();
+  state.settings.substances = readSubstanceInputs().filter(substance => substance.id !== id);
+  renderSettings();
+  toast('Removed. Save to keep the change.');
+}
+
 function saveSettings(event) {
   event.preventDefault();
   const envelopes = readEnvelopeInputs();
@@ -756,6 +966,7 @@ function saveSettings(event) {
   if (envelopes.some(envelope => envelope.percent < 0 || envelope.target < 0)) { toast('Percentages and targets cannot be negative.'); return; }
   state.settings.envelopes = envelopes;
   state.settings.habits = readHabitInputs().filter(habit => habit.title);
+  state.settings.substances = readSubstanceInputs().filter(substance => substance.name);
   state.settings.debtTotal = Math.max(0, Math.round(Number($('#debtTotalInput').value || 0)));
   state.settings.dailyFocusTarget = Math.max(0, Math.round(Number($('#focusTargetInput').value || 0)));
   saveState();
@@ -813,7 +1024,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.days ||= {}; state.activeTimer ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup imported successfully.');
   } catch { toast('This file is not a valid Control Center backup.'); }
   event.target.value = '';
@@ -829,6 +1040,10 @@ function deleteTime(id) {
   state.timeEntries = state.timeEntries.filter(entry => entry.id !== id);
   if (editingTimeId === id) cancelTimeEdit();
   saveState(); renderAll(); toast('Time entry deleted.');
+}
+function deleteCraving(id) {
+  state.cravings = state.cravings.filter(entry => entry.id !== id);
+  saveState(); renderAll(); toast('Entry deleted.');
 }
 
 function selectTab(tab) {
@@ -867,6 +1082,13 @@ function registerEvents() {
   });
   $('#addEnvelopeButton').addEventListener('click', addEnvelope);
   $('#addHabitButton').addEventListener('click', addHabit);
+  $('#addSubstanceButton').addEventListener('click', addSubstance);
+  $('#startSurfButton').addEventListener('click', beginSurf);
+  $('#cancelSurfButton').addEventListener('click', cancelSurf);
+  $('#surfOutcomes').addEventListener('click', event => {
+    const button = event.target.closest('[data-outcome]');
+    if (button) logCraving(button.dataset.outcome);
+  });
   $('#themeSelect').addEventListener('change', event => setThemePreference(event.target.value));
   $('#cancelIncomeEdit').addEventListener('click', cancelIncomeEdit);
   $('#cancelExpenseEdit').addEventListener('click', cancelExpenseEdit);
@@ -886,6 +1108,10 @@ function registerEvents() {
     const removeEnvelopeButton = event.target.closest('[data-remove-envelope]');
     const removeHabitButton = event.target.closest('[data-remove-habit]');
     const taskDeleteButton = event.target.closest('[data-task-delete]');
+    const removeSubstanceButton = event.target.closest('[data-remove-substance]');
+    const deleteCravingButton = event.target.closest('[data-delete-craving]');
+    if (removeSubstanceButton) removeSubstance(removeSubstanceButton.dataset.removeSubstance);
+    if (deleteCravingButton) deleteCraving(deleteCravingButton.dataset.deleteCraving);
     if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
     if (timeButton) deleteTime(timeButton.dataset.deleteTime);
     if (editTransactionButton) editTransaction(editTransactionButton.dataset.editTransaction);
