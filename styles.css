@@ -447,6 +447,12 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .rescue-icon { color: var(--rescue-bg); font-weight: 800; }
 .rescue-icon:hover { background: var(--rescue-bg); color: var(--rescue-ink); border-color: transparent; }
 
+.date-nav { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.date-nav .icon-button { font-size: 1.2rem; line-height: 1; }
+.date-nav .icon-button:disabled { opacity: .35; cursor: default; }
+.date-nav .icon-button:disabled:hover { background: var(--surface); }
+.date-nav .text-button { margin-left: 2px; }
+
 .jump-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .jump-row .secondary-button { flex: 1 1 auto; width: auto; font-size: .82rem; }
 

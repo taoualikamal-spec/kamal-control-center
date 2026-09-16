@@ -91,6 +91,8 @@ let state = loadState();
 let currentTransactionFilter = 'month';
 let installEvent = null;
 let toastTimeout;
+let selectedDate;   // set during init, once today() exists
+let selectedMonth;
 let editingIncomeId = null;
 let editingExpenseId = null;
 let editingTimeId = null;
@@ -130,6 +132,38 @@ const MAX_TASKS = 3;
 
 // Days hold small actions, months hold big ones, years hold the whole view.
 const yearKey = (date = today()) => String(date).slice(0, 4);
+
+/* Which day and month the user is looking at. Noon anchoring keeps the
+   arithmetic safe across daylight-saving shifts. */
+function shiftDate(date, days) {
+  return new Date(new Date(`${date}T12:00:00`).getTime() + days * DAY_MS).toISOString().slice(0, 10);
+}
+function shiftMonth(key, months) {
+  const [year, month] = key.split('-').map(Number);
+  const moved = new Date(Date.UTC(year, month - 1 + months, 1));
+  return `${moved.getUTCFullYear()}-${String(moved.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+function firstOfMonth(key) { return `${key}-01`; }
+
+function dayTitleFor(date) {
+  if (date === today()) return 'Today';
+  if (date === shiftDate(today(), -1)) return 'Yesterday';
+  return new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+function setSelectedDate(date) {
+  if (date > today()) return;
+  selectedDate = date;
+  renderDay();
+  renderTransactions();
+}
+
+function setSelectedMonth(key) {
+  if (key > monthKey()) return;
+  selectedMonth = key;
+  renderMonth();
+  renderTransactions();
+}
 function getMonthData(key = monthKey()) {
   state.months[key] ||= { bigMove: '', done: false };
   return state.months[key];
@@ -153,7 +187,7 @@ function rolloverTasks() {
 function addTask(text) {
   const value = text.trim();
   if (!value) return;
-  const day = getDayData();
+  const day = getDayData(selectedDate);
   day.tasks ||= [];
   if (day.tasks.length >= MAX_TASKS) { toast(`Keep it to ${MAX_TASKS}. Finish or clear one first.`); return; }
   day.tasks.push({ id: makeId(), text: value, done: false });
@@ -163,7 +197,7 @@ function addTask(text) {
 }
 
 function toggleTask(id, done) {
-  const day = getDayData();
+  const day = getDayData(selectedDate);
   const task = (day.tasks || []).find(item => item.id === id);
   if (!task) return;
   task.done = done;
@@ -174,7 +208,7 @@ function toggleTask(id, done) {
 }
 
 function deleteTask(id) {
-  const day = getDayData();
+  const day = getDayData(selectedDate);
   day.tasks = (day.tasks || []).filter(item => item.id !== id);
   saveState();
   renderTasks();
@@ -294,8 +328,8 @@ function cravingStats() {
   };
 }
 
-function todayFocusOnTasks() {
-  return state.timeEntries.filter(entry => entry.type === 'focus' && entry.date === today() && entry.task).reduce((sum, entry) => sum + Number(entry.minutes), 0);
+function focusOnTasksFor(date = selectedDate) {
+  return state.timeEntries.filter(entry => entry.type === 'focus' && entry.date === date && entry.task).reduce((sum, entry) => sum + Number(entry.minutes), 0);
 }
 
 function playChime() {
@@ -391,11 +425,10 @@ function weekDates() {
 function weekTimeTotals() { const dates = new Set(weekDates()); return timeTotals(entry => dates.has(entry.date)); }
 
 function renderHeader() {
-  $('#todayLabel').textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  // #todayLabel and #scorecardDate follow the day cursor and are set by renderDay.
   $('#incomeDate').value ||= today();
   $('#expenseDate').value ||= today();
   $('#timeDate').value ||= today();
-  $('#scorecardDate').textContent = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 function resolvedTheme() {
@@ -425,8 +458,8 @@ function renderRule() {
   $('#ruleStrip').innerHTML = items;
 }
 
-function renderEnvelopes() {
-  const metrics = envelopeMetrics();
+function renderEnvelopes(dateKey = today()) {
+  const metrics = envelopeMetrics(dateKey);
   $('#moneyEnvelopes').innerHTML = state.settings.envelopes.map(envelope => {
     const metric = metrics[envelope.id];
     const target = Number(envelope.target || 0);
@@ -444,9 +477,16 @@ function renderEnvelopes() {
 }
 
 function renderDay() {
-  const time = todayTimeTotals();
-  const ridden = state.cravings.filter(entry => entry.date === today() && entry.outcome === 'rode').length;
+  const time = timeTotals(entry => entry.date === selectedDate);
+  const ridden = state.cravings.filter(entry => entry.date === selectedDate && entry.outcome === 'rode').length;
   const focusTarget = state.settings.dailyFocusTarget || 0;
+  const isToday = selectedDate === today();
+
+  $('#dayTitle').textContent = dayTitleFor(selectedDate);
+  $('#todayLabel').textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('#scorecardDate').textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  $('#dayNext').disabled = isToday;
+  $('#dayToday').hidden = isToday;
 
   $('#focusToday').textContent = `${time.focus} min`;
   $('#focusDetail').textContent = focusTarget ? `Goal: ${focusTarget} min today` : (time.focus ? 'Focused minutes are protected minutes.' : 'Protect one useful block.');
@@ -471,13 +511,17 @@ function monthSpentTotal(dateKey = today()) {
 }
 
 function renderMonth() {
-  const income = totalIncome();
-  const spent = monthSpentTotal();
+  const anchor = firstOfMonth(selectedMonth);
+  const income = totalIncome(anchor);
+  const spent = monthSpentTotal(anchor);
   const debtPaid = debtPaidTotal();
-  const kept = recoveredTotal(state.cravings.filter(entry => monthKey(entry.date) === monthKey()));
-  const bigMove = getMonthData();
+  const kept = recoveredTotal(state.cravings.filter(entry => monthKey(entry.date) === selectedMonth));
+  const bigMove = getMonthData(selectedMonth);
+  const isThisMonth = selectedMonth === monthKey();
 
-  $('#monthLabel').textContent = new Date(`${today()}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  $('#monthNext').disabled = isThisMonth;
+  $('#monthThis').hidden = isThisMonth;
+  $('#monthLabel').textContent = new Date(`${anchor}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   $('#monthIncome').textContent = money(income);
   $('#monthIncomeDetail').textContent = income ? `Split by your ${state.settings.envelopes.map(item => item.percent).join(' / ')} rule.` : 'Record the money you actually receive.';
   $('#monthSpent').textContent = money(spent);
@@ -489,7 +533,7 @@ function renderMonth() {
 
   $('#bigMoveInput').value = bigMove.bigMove || '';
   $('#bigMoveDone').checked = Boolean(bigMove.done);
-  renderEnvelopes();
+  renderEnvelopes(anchor);
 }
 
 function inYear(date, year) { return String(date).slice(0, 4) === String(year); }
@@ -549,7 +593,7 @@ function renderIncomePreview() {
 }
 
 function renderTransactions() {
-  const entries = (currentTransactionFilter === 'month' ? entriesForMonth(state.transactions) : state.transactions).slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`));
+  const entries = (currentTransactionFilter === 'month' ? entriesForMonth(state.transactions, firstOfMonth(selectedMonth)) : state.transactions).slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`));
   $('#clearMonthFilter').textContent = currentTransactionFilter === 'month' ? 'Show all' : 'This month';
   $('#transactionRows').innerHTML = entries.length ? entries.map(entry => {
     const isIncome = entry.type === 'income';
@@ -608,7 +652,7 @@ function updateTimerTaskOptions() {
   const select = $('#timerTask');
   if (!select) return;
   const current = select.value;
-  const tasks = (getDayData().tasks || []).filter(task => !task.done);
+  const tasks = (getDayData(today()).tasks || []).filter(task => !task.done);
   select.innerHTML = `<option value="">General focus</option>` + tasks.map(task => `<option value="${task.id}">${escapeHtml(task.text)}</option>`).join('');
   if ([...select.options].some(option => option.value === current)) select.value = current;
 }
@@ -713,7 +757,7 @@ function renderBody() {
 }
 
 function renderHabits() {
-  const day = getDayData();
+  const day = getDayData(selectedDate);
   const habits = state.settings.habits;
   $('#habitList').innerHTML = habits.length ? habits.map(habit => `<label class="habit-item ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span class="habit-text"><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span><span>${day.habits[habit.id] ? '✓' : ''}</span></label>`).join('') : '<p class="small-note">No daily actions yet. Add up to a few in Setup.</p>';
   $('#priorityInput').value = day.priority || '';
@@ -732,7 +776,7 @@ function taskListHTML(tasks) {
 }
 
 function renderTasks() {
-  const tasks = getDayData().tasks || [];
+  const tasks = getDayData(selectedDate).tasks || [];
   const html = taskListHTML(tasks);
   const done = tasks.filter(task => task.done).length;
   $$('[data-task-list]').forEach(container => { container.innerHTML = html; });
@@ -757,15 +801,16 @@ function focusRingHTML(current, target) {
 }
 
 function renderFocusGoal() {
-  const focusMinutes = todayTimeTotals().focus;
+  const focusMinutes = timeTotals(entry => entry.date === selectedDate).focus;
   const target = state.settings.dailyFocusTarget || 0;
-  const onTasks = todayFocusOnTasks();
+  const onTasks = focusOnTasksFor(selectedDate);
   const ring = focusRingHTML(focusMinutes, target);
   const pct = target > 0 ? Math.round(Math.min(100, focusMinutes / target * 100)) : 0;
+  const when = selectedDate === today() ? 'today' : 'that day';
   let caption;
   if (!target) caption = 'Set a daily focus target in Setup.';
-  else if (focusMinutes >= target) caption = `Goal reached — ${focusMinutes} min focused today.`;
-  else caption = `${pct}% of today's ${target}-min goal.`;
+  else if (focusMinutes >= target) caption = `Goal reached — ${focusMinutes} min focused ${when}.`;
+  else caption = `${pct}% of the ${target}-min goal ${when}.`;
   if (onTasks > 0) caption += ` ${onTasks} min on your tasks.`;
   $$('[data-focus-ring]').forEach(node => { node.innerHTML = ring; });
   $$('[data-focus-caption]').forEach(node => { node.textContent = caption; });
@@ -1037,13 +1082,13 @@ function tickTimer() {
 }
 
 function updateHabit(habitId, completed) {
-  getDayData().habits[habitId] = completed;
+  getDayData(selectedDate).habits[habitId] = completed;
   saveState();
   renderHabits();
 }
 
 function saveDayText(field, value) {
-  getDayData()[field] = value;
+  getDayData(selectedDate)[field] = value;
   saveState();
 }
 
@@ -1233,12 +1278,18 @@ function registerEvents() {
   $('#priorityInput').addEventListener('input', event => saveDayText('priority', event.target.value));
   $('#dailyReflection').addEventListener('input', event => saveDayText('reflection', event.target.value));
   $('#rescueButton').addEventListener('click', () => selectTab('body'));
-  $('#bigMoveInput').addEventListener('input', event => { getMonthData().bigMove = event.target.value; saveState(); });
+  $('#bigMoveInput').addEventListener('input', event => { getMonthData(selectedMonth).bigMove = event.target.value; saveState(); });
   $('#bigMoveDone').addEventListener('change', event => {
-    getMonthData().done = event.target.checked;
+    getMonthData(selectedMonth).done = event.target.checked;
     saveState();
     if (event.target.checked) toast('That one landed. It stays landed.');
   });
+  $('#dayPrev').addEventListener('click', () => setSelectedDate(shiftDate(selectedDate, -1)));
+  $('#dayNext').addEventListener('click', () => setSelectedDate(shiftDate(selectedDate, 1)));
+  $('#dayToday').addEventListener('click', () => setSelectedDate(today()));
+  $('#monthPrev').addEventListener('click', () => setSelectedMonth(shiftMonth(selectedMonth, -1)));
+  $('#monthNext').addEventListener('click', () => setSelectedMonth(shiftMonth(selectedMonth, 1)));
+  $('#monthThis').addEventListener('click', () => setSelectedMonth(monthKey()));
   $('#yearTheme').addEventListener('input', event => { getYearData().theme = event.target.value; saveState(); });
   $('#yearNote').addEventListener('input', event => { getYearData().note = event.target.value; saveState(); });
   document.addEventListener('click', event => {
@@ -1271,6 +1322,8 @@ function registerPWA() {
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./service-worker.js').catch(() => {});
 }
 
+selectedDate = today();
+selectedMonth = monthKey();
 registerEvents();
 applyTheme();
 rolloverTasks();

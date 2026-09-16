@@ -41,9 +41,15 @@
           </div>
         </div>
 
+        <div class="date-nav" role="group" aria-label="Choose which day to view">
+          <button class="icon-button" id="dayPrev" title="Previous day" aria-label="Previous day">‹</button>
+          <button class="icon-button" id="dayNext" title="Next day" aria-label="Next day">›</button>
+          <button class="text-button" id="dayToday" hidden>Jump to today</button>
+        </div>
+
         <div class="insight-banner" id="insightBanner"></div>
 
-        <section class="time-score-grid" aria-label="Today at a glance">
+        <section class="time-score-grid" aria-label="The selected day at a glance">
           <article class="metric-card"><span>Focus today</span><strong id="focusToday">0 min</strong><small id="focusDetail">Protect one useful block.</small></article>
           <article class="metric-card"><span>Drifted today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Notice it, without a verdict.</small></article>
           <article class="metric-card"><span>Urges ridden today</span><strong id="urgesToday">0</strong><small id="urgesDetail">Every one logged is worth having.</small></article>
@@ -85,7 +91,13 @@
           <div><p class="eyebrow" id="monthLabel">This month</p><h1 id="monthTitle">Big actions</h1><p class="lede">A month is long enough for a real move to land, and short enough to still picture from here.</p></div>
         </div>
 
-        <section class="metric-grid" aria-label="This month at a glance">
+        <div class="date-nav" role="group" aria-label="Choose which month to view">
+          <button class="icon-button" id="monthPrev" title="Previous month" aria-label="Previous month">‹</button>
+          <button class="icon-button" id="monthNext" title="Next month" aria-label="Next month">›</button>
+          <button class="text-button" id="monthThis" hidden>Jump to this month</button>
+        </div>
+
+        <section class="metric-grid" aria-label="The selected month at a glance">
           <article class="metric-card"><span>Received</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Record the money you actually receive.</small></article>
           <article class="metric-card"><span>Spent</span><strong id="monthSpent">0 MAD</strong><small id="monthSpentDetail">Across all envelopes.</small></article>
           <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD total debt</small></article>
