@@ -63,12 +63,48 @@ function defaultState() {
   };
 }
 
+/* Wording written before the plain-English pass lives in saved data, not in code.
+   Rewrite only the exact old default strings, so anything renamed by hand is kept. */
+const wordingUpgrades = {
+  habitTitle: {
+    'Track today’s money': 'Write down today’s money',
+    'Protect one focus block': 'Do 25 minutes of focus',
+    'Close the day clearly': 'Write a short note before bed'
+  },
+  habitDetail: {
+    'Record every payment received or spent.': 'Every amount you got or spent.',
+    'At least 25 minutes on a meaningful task.': 'One block of real work, with the phone away.',
+    'Write a two-minute note before sleep.': 'Two minutes. How the day went.'
+  },
+  envelopeName: {
+    'Family & Home': 'Family & home',
+    'Personal Needs': 'Myself',
+    'Debt': 'Money I owe',
+    'Emergency': 'Just in case'
+  },
+  substanceName: { 'Cannabis': 'Weed' }
+};
+
+function upgradeWording(settings) {
+  settings.habits.forEach(habit => {
+    habit.title = wordingUpgrades.habitTitle[habit.title] || habit.title;
+    habit.detail = wordingUpgrades.habitDetail[habit.detail] || habit.detail;
+  });
+  settings.envelopes.forEach(envelope => {
+    envelope.name = wordingUpgrades.envelopeName[envelope.name] || envelope.name;
+  });
+  settings.substances.forEach(substance => {
+    substance.name = wordingUpgrades.substanceName[substance.name] || substance.name;
+  });
+}
+
 function normalizeSettings(settings) {
   settings.envelopes = (settings.envelopes || defaultEnvelopes).map((item, index) => ({ ...defaultEnvelopes[index], ...item }));
   settings.habits = (settings.habits && settings.habits.length ? settings.habits : structuredClone(defaultHabits)).map(item => ({ detail: '', ...item }));
   settings.substances = (settings.substances && settings.substances.length ? settings.substances : structuredClone(defaultSubstances)).map(item => ({ costPerUse: 0, ...item }));
   settings.debtTotal = Number(settings.debtTotal ?? 45000);
   settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
+  upgradeWording(settings);
   return settings;
 }
 
@@ -838,7 +874,7 @@ function renderStreaks() {
   const habits = state.settings.habits;
   $('#streakCards').innerHTML = habits.map(habit => {
     const rate = completionFor(habit.id);
-    return `<article class="streak-card"><strong>${rate.week}<em>/7</em></strong><span>${escapeHtml(habit.title)} · ${rate.monthPct}% of the last 30 days</span></article>`;
+    return `<article class="streak-card" title="${escapeHtml(habit.title)}"><strong>${rate.week}<em>/7</em></strong><span>days this week · ${escapeHtml(habit.title)}</span><small>${rate.monthPct}% of the last 30 days</small></article>`;
   }).join('');
   $('#weekChecks').innerHTML = weekDates().map(date => {
     const checked = habits.filter(habit => state.days[date]?.habits?.[habit.id]).length;

@@ -454,6 +454,11 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .date-nav .text-button { margin-left: 2px; }
 .date-nav-current { font-size: .86rem; font-weight: 700; color: var(--text); min-width: 8.5em; text-align: center; font-variant-numeric: tabular-nums; }
 
+/* Short "what does this do" lines above controls that need explaining */
+.how-to { margin: 0 0 13px; font-size: .84rem; line-height: 1.5; color: var(--muted); }
+.how-to b { color: var(--text); font-weight: 700; }
+.streak-card small { display: block; margin-top: 3px; font-size: .68rem; color: var(--quiet); }
+
 /* Week strip doubles as the day picker */
 .week-day { width: 100%; padding: 4px 2px; cursor: pointer; transition: transform .12s ease, border-color .12s ease; }
 .week-day:hover { transform: translateY(-1px); border-color: var(--green); }
