@@ -54,6 +54,8 @@ function defaultState() {
     timeEntries: [],
     cravings: [],
     days: {},
+    months: {},
+    years: {},
     activeTimer: null,
     activeSurf: null,
     updatedAt: new Date().toISOString()
@@ -78,6 +80,8 @@ function loadState() {
     stored.timeEntries ||= [];
     stored.cravings ||= [];
     stored.days ||= {};
+    stored.months ||= {};
+    stored.years ||= {};
     stored.activeSurf ||= null;
     return stored;
   } catch { return defaultState(); }
@@ -123,6 +127,17 @@ function getDayData(date = today()) {
 }
 
 const MAX_TASKS = 3;
+
+// Days hold small actions, months hold big ones, years hold the whole view.
+const yearKey = (date = today()) => String(date).slice(0, 4);
+function getMonthData(key = monthKey()) {
+  state.months[key] ||= { bigMove: '', done: false };
+  return state.months[key];
+}
+function getYearData(key = yearKey()) {
+  state.years[key] ||= { theme: '', note: '' };
+  return state.years[key];
+}
 
 // Carry unfinished tasks from the most recent earlier day into today, once per day.
 function rolloverTasks() {
@@ -410,20 +425,8 @@ function renderRule() {
   $('#ruleStrip').innerHTML = items;
 }
 
-function envelopeRow(envelope, metric) {
-  const target = Number(envelope.target || 0);
-  const progress = target > 0 ? Math.min(100, Math.max(0, metric.balance / target * 100)) : 0;
-  const targetText = envelope.id === 'debt' ? `${money(metric.balance)} reserved` : target ? `${money(metric.balance)} / ${money(target)}` : money(metric.balance);
-  return `<div class="envelope-row">
-    <span class="envelope-symbol" style="color:${envelope.color};background:${envelope.color}18">${envelopeIcons[envelope.id] || '•'}</span>
-    <div><div class="envelope-name">${escapeHtml(envelope.name)} <span>${envelope.percent}% rule</span></div><div class="progress-track"><div class="progress-fill" style="width:${progress}%;background:${envelope.color}"></div></div></div>
-    <span class="envelope-balance">${targetText}</span>
-  </div>`;
-}
-
 function renderEnvelopes() {
   const metrics = envelopeMetrics();
-  $('#dashboardEnvelopes').innerHTML = state.settings.envelopes.map(envelope => envelopeRow(envelope, metrics[envelope.id])).join('');
   $('#moneyEnvelopes').innerHTML = state.settings.envelopes.map(envelope => {
     const metric = metrics[envelope.id];
     const target = Number(envelope.target || 0);
@@ -440,26 +443,101 @@ function renderEnvelopes() {
   $('#expenseEnvelope').innerHTML = state.settings.envelopes.map(envelope => `<option value="${envelope.id}">${escapeHtml(envelope.name)}</option>`).join('');
 }
 
-function renderDashboard() {
-  const income = totalIncome();
-  const debtPaid = debtPaidTotal();
+function renderDay() {
   const time = todayTimeTotals();
-  $('#monthIncome').textContent = money(income);
-  $('#monthIncomeDetail').textContent = income ? `Using your ${state.settings.envelopes.map(item => item.percent).join(' / ')} rule.` : 'Record the money you actually receive.';
-  $('#debtPaid').textContent = money(debtPaid);
-  $('#debtDetail').textContent = `${money(Math.max(0, state.settings.debtTotal - debtPaid))} remains of ${money(state.settings.debtTotal)}`;
-  $('#stolenToday').textContent = `${time.stolen} min`;
-  $('#stolenDetail').textContent = time.stolen ? 'Name it, then choose the next block.' : 'Track it honestly, without shame.';
-  $('#focusToday').textContent = `${time.focus} min`;
+  const ridden = state.cravings.filter(entry => entry.date === today() && entry.outcome === 'rode').length;
   const focusTarget = state.settings.dailyFocusTarget || 0;
+
+  $('#focusToday').textContent = `${time.focus} min`;
   $('#focusDetail').textContent = focusTarget ? `Goal: ${focusTarget} min today` : (time.focus ? 'Focused minutes are protected minutes.' : 'Protect one useful block.');
-  renderEnvelopes();
+  $('#stolenToday').textContent = `${time.stolen} min`;
+  $('#stolenDetail').textContent = time.stolen ? 'Name it, then choose the next block.' : 'Notice it, without a verdict.';
+  $('#urgesToday').textContent = ridden;
+  $('#urgesDetail').textContent = ridden ? 'Ground held today.' : 'Every one logged is worth having.';
+
   renderHabits();
   renderFocusGoal();
+
   const banner = $('#insightBanner');
-  if (!income) { banner.textContent = 'Start small: record the next MAD that reaches your hand. The system begins with one honest entry.'; banner.classList.add('show'); }
-  else if (time.stolen > time.focus && time.stolen >= 30) { banner.textContent = `Today has ${time.stolen - time.focus} more stolen minutes than focused minutes. A 25-minute reset is enough to change the direction.`; banner.classList.add('show'); }
-  else { banner.textContent = 'You are building evidence that you can manage money and attention deliberately.'; banner.classList.add('show'); }
+  if (ridden) banner.textContent = `You rode out ${ridden} ${ridden === 1 ? 'urge' : 'urges'} today. That is ground held, and it counts more than a quiet day.`;
+  else if (time.stolen > time.focus && time.stolen >= 30) banner.textContent = `Today has ${time.stolen - time.focus} more drifted minutes than focused ones. A 25-minute block is enough to turn the direction.`;
+  else if (!state.transactions.length && !state.timeEntries.length) banner.textContent = 'Start with one honest entry. Days are the place of small actions, and one is enough to begin.';
+  else banner.textContent = 'You are building evidence — quietly, and for the long thing rather than the quick one.';
+  banner.classList.add('show');
+}
+
+function monthSpentTotal(dateKey = today()) {
+  return entriesForMonth(state.transactions, dateKey).filter(entry => entry.type === 'expense').reduce((sum, entry) => sum + Number(entry.amount), 0);
+}
+
+function renderMonth() {
+  const income = totalIncome();
+  const spent = monthSpentTotal();
+  const debtPaid = debtPaidTotal();
+  const kept = recoveredTotal(state.cravings.filter(entry => monthKey(entry.date) === monthKey()));
+  const bigMove = getMonthData();
+
+  $('#monthLabel').textContent = new Date(`${today()}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  $('#monthIncome').textContent = money(income);
+  $('#monthIncomeDetail').textContent = income ? `Split by your ${state.settings.envelopes.map(item => item.percent).join(' / ')} rule.` : 'Record the money you actually receive.';
+  $('#monthSpent').textContent = money(spent);
+  $('#monthSpentDetail').textContent = income ? `${money(Math.max(0, income - spent))} of this month's money is still unspent.` : 'Across all envelopes.';
+  $('#debtPaid').textContent = money(debtPaid);
+  $('#debtDetail').textContent = `${money(Math.max(0, state.settings.debtTotal - debtPaid))} remains of ${money(state.settings.debtTotal)}`;
+  $('#monthKept').textContent = money(kept);
+  $('#monthKeptDetail').textContent = kept ? 'Money that stayed because you rode one out.' : 'From urges you rode out.';
+
+  $('#bigMoveInput').value = bigMove.bigMove || '';
+  $('#bigMoveDone').checked = Boolean(bigMove.done);
+  renderEnvelopes();
+}
+
+function inYear(date, year) { return String(date).slice(0, 4) === String(year); }
+
+function yearTotals(year) {
+  const focusMinutes = state.timeEntries.filter(entry => entry.type === 'focus' && inYear(entry.date, year)).reduce((sum, entry) => sum + Number(entry.minutes), 0);
+  const ridden = state.cravings.filter(entry => entry.outcome === 'rode' && inYear(entry.date, year)).length;
+  const kept = recoveredTotal(state.cravings.filter(entry => inYear(entry.date, year)));
+  const debt = state.transactions.filter(entry => entry.type === 'expense' && entry.envelopeId === 'debt' && inYear(entry.date, year)).reduce((sum, entry) => sum + Number(entry.amount), 0);
+  return { focusMinutes, ridden, kept, debt };
+}
+
+function renderYear() {
+  const year = yearKey();
+  const data = getYearData(year);
+  const totals = yearTotals(year);
+
+  $('#yearLabel').textContent = year;
+  $('#yearTheme').value = data.theme || '';
+  $('#yearNote').value = data.note || '';
+
+  $('#yearStats').innerHTML = `
+    <article class="metric-card"><span>Focused</span><strong>${Math.round(totals.focusMinutes / 60)} h</strong><small>${totals.focusMinutes} minutes protected this year</small></article>
+    <article class="metric-card"><span>Urges ridden</span><strong>${totals.ridden}</strong><small>Each one was a move that did not land.</small></article>
+    <article class="metric-card"><span>Money kept</span><strong>${money(totals.kept)}</strong><small>Not spent, because you stayed.</small></article>
+    <article class="metric-card"><span>Debt paid</span><strong>${money(totals.debt)}</strong><small>Paid down this year.</small></article>`;
+
+  const months = Array.from({ length: 12 }, (unused, index) => `${year}-${String(index + 1).padStart(2, '0')}`);
+  const arc = months.map(key => ({
+    key,
+    label: new Date(`${key}-01T12:00:00`).toLocaleDateString('en-US', { month: 'short' }),
+    focus: state.timeEntries.filter(entry => entry.type === 'focus' && monthKey(entry.date) === key).reduce((sum, entry) => sum + Number(entry.minutes), 0),
+    ridden: state.cravings.filter(entry => entry.outcome === 'rode' && monthKey(entry.date) === key).length
+  }));
+  const max = Math.max(60, ...arc.map(item => item.focus));
+  $('#yearArc').innerHTML = arc.map(item => {
+    const height = item.focus / max * 100;
+    const current = item.key === monthKey();
+    return `<div class="arc-cell ${current ? 'current' : ''}" title="${item.label}: ${Math.round(item.focus / 60)} h focused, ${item.ridden} urges ridden">
+      <div class="arc-track"><div class="arc-fill" style="height:${height}%"></div></div>
+      <b>${item.label.slice(0, 1)}</b><span>${item.focus ? `${Math.round(item.focus / 60)}h` : '·'}</span>
+    </div>`;
+  }).join('');
+
+  const best = arc.slice().sort((a, b) => b.focus - a.focus)[0];
+  $('#yearSuggestion').textContent = best && best.focus
+    ? `Your strongest month so far is ${best.label}, at ${Math.round(best.focus / 60)} focused hours. Thin months are information, not accusation.`
+    : 'Bars show focused hours. Thin months are information, not accusation.';
 }
 
 function renderIncomePreview() {
@@ -637,8 +715,6 @@ function renderBody() {
 function renderHabits() {
   const day = getDayData();
   const habits = state.settings.habits;
-  $('#dashboardHabits').innerHTML = habits.length ? habits.map(habit => `<label class="compact-habit ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span>${escapeHtml(habit.title)}</span></label>`).join('') : '<p class="small-note">Add daily actions in Setup.</p>';
-  $('#dashboardPriority').value = day.priority || '';
   $('#habitList').innerHTML = habits.length ? habits.map(habit => `<label class="habit-item ${day.habits[habit.id] ? 'done' : ''}"><input type="checkbox" data-habit="${habit.id}" ${day.habits[habit.id] ? 'checked' : ''}><span class="habit-text"><strong>${escapeHtml(habit.title)}</strong><small>${escapeHtml(habit.detail)}</small></span><span>${day.habits[habit.id] ? '✓' : ''}</span></label>`).join('') : '<p class="small-note">No daily actions yet. Add up to a few in Setup.</p>';
   $('#priorityInput').value = day.priority || '';
   $('#dailyReflection').value = day.reflection || '';
@@ -749,7 +825,9 @@ function renderSettings() {
 function renderAll() {
   renderHeader();
   renderRule();
-  renderDashboard();
+  renderDay();
+  renderMonth();
+  renderYear();
   renderIncomePreview();
   renderTransactions();
   updateTimeCategoryOptions();
@@ -1078,7 +1156,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup imported successfully.');
   } catch { toast('This file is not a valid Control Center backup.'); }
   event.target.value = '';
@@ -1123,8 +1201,7 @@ function registerEvents() {
     else if (button.id === 'startOpenTimer') beginTimer('stopwatch');
   });
   $('#stopTimerButton').addEventListener('click', () => finishActiveTimer(false));
-  $('#dashboardTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#dashboardTaskInput').value); $('#dashboardTaskInput').value = ''; });
-  $('#consistencyTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#consistencyTaskInput').value); $('#consistencyTaskInput').value = ''; });
+  $('#dayTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#dayTaskInput').value); $('#dayTaskInput').value = ''; });
   $('#settingsForm').addEventListener('submit', saveSettings);
   $('#exportButton').addEventListener('click', exportData);
   $('#quickBackupButton').addEventListener('click', exportData);
@@ -1153,9 +1230,17 @@ function registerEvents() {
     if (event.target.matches('[data-habit]')) updateHabit(event.target.dataset.habit, event.target.checked);
     if (event.target.matches('[data-task-toggle]')) toggleTask(event.target.dataset.taskToggle, event.target.checked);
   });
-  $('#dashboardPriority').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#priorityInput').value = event.target.value; });
-  $('#priorityInput').addEventListener('input', event => { saveDayText('priority', event.target.value); $('#dashboardPriority').value = event.target.value; });
+  $('#priorityInput').addEventListener('input', event => saveDayText('priority', event.target.value));
   $('#dailyReflection').addEventListener('input', event => saveDayText('reflection', event.target.value));
+  $('#rescueButton').addEventListener('click', () => selectTab('body'));
+  $('#bigMoveInput').addEventListener('input', event => { getMonthData().bigMove = event.target.value; saveState(); });
+  $('#bigMoveDone').addEventListener('change', event => {
+    getMonthData().done = event.target.checked;
+    saveState();
+    if (event.target.checked) toast('That one landed. It stays landed.');
+  });
+  $('#yearTheme').addEventListener('input', event => { getYearData().theme = event.target.value; saveState(); });
+  $('#yearNote').addEventListener('input', event => { getYearData().note = event.target.value; saveState(); });
   document.addEventListener('click', event => {
     const transactionButton = event.target.closest('[data-delete-transaction]');
     const timeButton = event.target.closest('[data-delete-time]');

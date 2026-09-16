@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1325">
-  <meta name="description" content="A private finance, focus, and consistency tracker for Kamal.">
+  <meta name="description" content="A private system for climbing back: money, attention, urges and daily practice.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
   <link rel="stylesheet" href="styles.css">
-  <title>Kamal Control Center</title>
+  <title>Up Again</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#dashboard" aria-label="Kamal Control Center home">
-        <span class="brand-mark">K</span>
-        <span><strong>Kamal Control Center</strong><small>Money, time, direction</small></span>
+      <a class="brand" href="#day" aria-label="Up Again home">
+        <span class="brand-mark">↑</span>
+        <span><strong>Up Again</strong><small>Eternal Victory</small></span>
       </a>
       <div class="top-actions">
-        <span class="privacy-pill" title="Your data remains in this browser unless you export it">Private on this device</span>
+        <button class="icon-button rescue-icon" id="rescueButton" title="I'm craving — open the urge tool" aria-label="I'm craving — open the urge tool">≈</button>
         <button class="icon-button" id="themeButton" title="Switch theme" aria-label="Switch theme">☾</button>
         <button class="icon-button" id="installButton" hidden title="Install app">↓</button>
         <button class="icon-button" id="quickBackupButton" title="Export a backup">↧</button>
@@ -27,54 +27,77 @@
     </header>
 
     <main>
-      <section id="dashboard" class="page active" aria-labelledby="dashboardTitle">
+      <!-- ============ DAY — the place of small actions ============ -->
+      <section id="day" class="page active" aria-labelledby="dayTitle">
         <div class="page-heading">
           <div>
             <p class="eyebrow" id="todayLabel"></p>
-            <h1 id="dashboardTitle">Today</h1>
-            <p class="lede">Record money. Notice time. Finish one useful thing.</p>
+            <h1 id="dayTitle">Today</h1>
+            <p class="lede">Days are the place of small actions. One of them is enough to count.</p>
           </div>
           <div class="heading-actions">
             <button class="rescue-button compact" data-open-tab="body">I'm craving</button>
-            <button class="primary-button" data-open-tab="money">+ Record money</button>
+            <button class="primary-button" data-open-tab="month">+ Record money</button>
           </div>
         </div>
 
         <div class="insight-banner" id="insightBanner"></div>
 
-        <section class="metric-grid" aria-label="Today at a glance">
-          <article class="metric-card"><span>This month received</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Record the money you actually receive.</small></article>
-          <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD total debt</small></article>
-          <article class="metric-card"><span>Drifted today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Track it honestly, without shame.</small></article>
+        <section class="time-score-grid" aria-label="Today at a glance">
           <article class="metric-card"><span>Focus today</span><strong id="focusToday">0 min</strong><small id="focusDetail">Protect one useful block.</small></article>
+          <article class="metric-card"><span>Drifted today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Notice it, without a verdict.</small></article>
+          <article class="metric-card"><span>Urges ridden today</span><strong id="urgesToday">0</strong><small id="urgesDetail">Every one logged is worth having.</small></article>
         </section>
 
-        <div class="dashboard-grid">
-          <section class="panel envelope-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Cash envelopes</p><h2>Money this month</h2></div><button class="text-button" data-open-tab="money">View all →</button></div>
-            <div id="dashboardEnvelopes" class="envelope-list"></div>
-          </section>
-          <section class="panel scorecard-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Daily scorecard</p><h2>Three small actions</h2></div><button class="text-button" data-open-tab="consistency">Open daily →</button></div>
+        <div class="two-column">
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Small actions</p><h2>Today's non-negotiables</h2></div><span class="date-chip" id="scorecardDate"></span></div>
             <div class="focus-goal-inline">
               <div class="ring-holder" data-focus-ring></div>
               <div><p class="eyebrow">Focus goal</p><small data-focus-caption class="focus-caption"></small><button class="text-button" data-open-tab="time">Start a focus block →</button></div>
             </div>
-            <div id="dashboardHabits" class="compact-habits"></div>
-            <label class="priority-input">Today's one meaningful move<input id="dashboardPriority" maxlength="180" placeholder="Example: Send five DevOps outreach messages"></label>
+            <div class="habit-list" id="habitList"></div>
+            <label class="priority-input">One meaningful move<input id="priorityInput" maxlength="180" placeholder="The one thing that would make today count"></label>
             <div class="task-block">
               <div class="task-block-head"><span>Top tasks today</span><small data-task-count class="task-count"></small></div>
               <div class="task-list" data-task-list></div>
-              <form id="dashboardTaskForm" class="task-add"><input id="dashboardTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
+              <form id="dayTaskForm" class="task-add"><input id="dayTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
+            </div>
+            <label class="priority-input">2-minute closing note<textarea id="dailyReflection" maxlength="500" placeholder="What helped? What pulled at you? What is tomorrow's first move?"></textarea></label>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Momentum</p><h2>The chain, not the streak</h2></div></div>
+            <div id="streakCards" class="streak-cards"></div>
+            <div class="week-checks" id="weekChecks"></div>
+            <p class="small-note">A missed day is data, not a broken chain. You return at the next decision, not next Monday.</p>
+            <div class="jump-row">
+              <button class="secondary-button" data-open-tab="time">Where your time goes →</button>
+              <button class="secondary-button" data-open-tab="body">Urges &amp; field notes →</button>
             </div>
           </section>
         </div>
       </section>
 
-      <section id="money" class="page" aria-labelledby="moneyTitle">
+      <!-- ============ MONTH — the place of big actions ============ -->
+      <section id="month" class="page" aria-labelledby="monthTitle">
         <div class="page-heading">
-          <div><p class="eyebrow">Cashflow system</p><h1 id="moneyTitle">Envelope money tracker</h1><p class="lede">Every receipt gets split before it disappears.</p></div>
+          <div><p class="eyebrow" id="monthLabel">This month</p><h1 id="monthTitle">Big actions</h1><p class="lede">A month is long enough for a real move to land, and short enough to still picture from here.</p></div>
         </div>
+
+        <section class="metric-grid" aria-label="This month at a glance">
+          <article class="metric-card"><span>Received</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Record the money you actually receive.</small></article>
+          <article class="metric-card"><span>Spent</span><strong id="monthSpent">0 MAD</strong><small id="monthSpentDetail">Across all envelopes.</small></article>
+          <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD total debt</small></article>
+          <article class="metric-card"><span>Money kept</span><strong id="monthKept">0 MAD</strong><small id="monthKeptDetail">From urges you rode out.</small></article>
+        </section>
+
+        <section class="panel big-move-panel">
+          <div class="panel-heading"><div><p class="eyebrow">One campaign</p><h2>The big move this month</h2></div></div>
+          <label class="priority-input">What would make this month count?<input id="bigMoveInput" maxlength="180" placeholder="One thing. Not a list."></label>
+          <label class="big-move-done"><input type="checkbox" id="bigMoveDone"><span>Done — this one landed</span></label>
+          <p class="small-note">Months hold one big action. If it needs a list, it belongs in days.</p>
+        </section>
 
         <div class="rule-strip" id="ruleStrip"></div>
 
@@ -111,9 +134,33 @@
         </section>
       </section>
 
+      <!-- ============ YEAR — the whole view, and the puzzle ============ -->
+      <section id="year" class="page" aria-labelledby="yearTitle">
+        <div class="page-heading">
+          <div><p class="eyebrow" id="yearLabel">This year</p><h1 id="yearTitle">The whole view</h1><p class="lede">Years are where the small and big actions become one shape — and where you earn the next piece.</p></div>
+        </div>
+
+        <section class="panel puzzle-panel">
+          <div class="panel-heading"><div><p class="eyebrow">Earned this year</p><h2>The puzzle</h2></div></div>
+          <label class="priority-input">Name this year's piece<input id="yearTheme" maxlength="80" placeholder="Example: the year I stopped bleeding money"></label>
+          <label class="priority-input">What it taught you<textarea id="yearNote" maxlength="600" placeholder="Written at the end, or added to as you go. This becomes an instrument for next year."></textarea></label>
+          <p class="small-note">Each year hands you a piece you did not have before. The pieces are the arsenal.</p>
+        </section>
+
+        <section class="metric-grid" id="yearStats" aria-label="This year at a glance"></section>
+
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">The arc</p><h2>Twelve months of evidence</h2></div></div>
+          <div class="arc-wrap"><div id="yearArc" class="year-arc"></div></div>
+          <p class="small-note" id="yearSuggestion">Bars show focused hours. Thin months are information, not accusation.</p>
+        </section>
+      </section>
+
+      <!-- ============ TIME — detail view, reached from Day ============ -->
       <section id="time" class="page" aria-labelledby="timeTitle">
         <div class="page-heading">
           <div><p class="eyebrow">Attention</p><h1 id="timeTitle">Where your time goes</h1><p class="lede">See it plainly, without a verdict, then choose the next block on purpose.</p></div>
+          <button class="text-button" data-open-tab="day">← Back to today</button>
         </div>
 
         <div class="panel focus-goal-panel focus-goal-inline">
@@ -157,7 +204,7 @@
         </div>
 
         <section class="panel pattern-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Weekly pattern</p><h2>Replace guilt with data</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">Weekly pattern</p><h2>Data instead of guilt</h2></div></div>
           <div id="weeklyBars" class="weekly-bars"></div>
           <p class="small-note" id="timeSuggestion">Start with one entry. Accuracy beats perfection.</p>
         </section>
@@ -167,9 +214,11 @@
         </section>
       </section>
 
+      <!-- ============ BODY — detail view, reached from the topbar rescue ============ -->
       <section id="body" class="page" aria-labelledby="bodyTitle">
         <div class="page-heading">
           <div><p class="eyebrow">Urges</p><h1 id="bodyTitle">Ride the wave</h1><p class="lede">A craving climbs, crests and falls. You don't have to beat it — you only have to outlast a few minutes.</p></div>
+          <button class="text-button" data-open-tab="day">← Back to today</button>
         </div>
 
         <section class="time-score-grid" id="cravingStats" aria-label="Urge summary"></section>
@@ -237,31 +286,9 @@
         </section>
       </section>
 
-      <section id="consistency" class="page" aria-labelledby="consistencyTitle">
-        <div class="page-heading"><div><p class="eyebrow">Low-friction discipline</p><h1 id="consistencyTitle">Consistency scorecard</h1><p class="lede">Discipline is a system you return to—not a mood you wait for.</p></div></div>
-        <div class="two-column">
-          <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Today</p><h2>Three non-negotiables</h2></div><span class="date-chip" id="scorecardDate"></span></div>
-            <div class="habit-list" id="habitList"></div>
-            <label class="priority-input">One meaningful move<input id="priorityInput" maxlength="180" placeholder="The one thing that would make today count"></label>
-            <div class="task-block">
-              <div class="task-block-head"><span>Top tasks today</span><small data-task-count class="task-count"></small></div>
-              <div class="task-list" data-task-list></div>
-              <form id="consistencyTaskForm" class="task-add"><input id="consistencyTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
-            </div>
-            <label class="priority-input">2-minute closing note<textarea id="dailyReflection" maxlength="500" placeholder="What helped? What stole time? What is tomorrow's first move?"></textarea></label>
-          </section>
-          <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Momentum</p><h2>Keep the chain visible</h2></div></div>
-            <div id="streakCards" class="streak-cards"></div>
-            <div class="week-checks" id="weekChecks"></div>
-            <p class="small-note">A missed day is data. Restart at the next decision—not next Monday.</p>
-          </section>
-        </div>
-      </section>
-
+      <!-- ============ SETUP ============ -->
       <section id="settings" class="page" aria-labelledby="settingsTitle">
-        <div class="page-heading"><div><p class="eyebrow">System settings</p><h1 id="settingsTitle">Your rules, your data</h1><p class="lede">Keep the money rule simple enough to follow when life is busy.</p></div></div>
+        <div class="page-heading"><div><p class="eyebrow">System settings</p><h1 id="settingsTitle">Your rules, your data</h1><p class="lede">Keep the rules simple enough to follow when life is busy.</p></div></div>
         <div class="two-column">
           <section class="panel form-panel">
             <div class="panel-heading"><div><p class="eyebrow">Envelope rule</p><h2>60 / 20 / 15 / 5</h2></div></div>
@@ -297,11 +324,9 @@
     </main>
 
     <nav class="bottom-nav" aria-label="Main navigation">
-      <button class="nav-item active" data-tab="dashboard"><span>⌂</span>Home</button>
-      <button class="nav-item" data-tab="money"><span>◈</span>Money</button>
-      <button class="nav-item" data-tab="time"><span>◷</span>Time</button>
-      <button class="nav-item" data-tab="body"><span>≈</span>Body</button>
-      <button class="nav-item" data-tab="consistency"><span>✓</span>Daily</button>
+      <button class="nav-item active" data-tab="day"><span>☀</span>Day</button>
+      <button class="nav-item" data-tab="month"><span>◑</span>Month</button>
+      <button class="nav-item" data-tab="year"><span>◎</span>Year</button>
       <button class="nav-item" data-tab="settings"><span>⚙</span>Setup</button>
     </nav>
   </div>
