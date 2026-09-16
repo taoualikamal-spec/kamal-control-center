@@ -454,6 +454,24 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .date-nav .text-button { margin-left: 2px; }
 .date-nav-current { font-size: .86rem; font-weight: 700; color: var(--text); min-width: 8.5em; text-align: center; font-variant-numeric: tabular-nums; }
 
+/* Findings built from the answers, instead of empty promises */
+.chip-label { margin: 0 0 9px; font-size: .82rem; color: var(--text); }
+.chip-toggle.on { background: var(--green); color: #fff; border-color: transparent; }
+.chip-toggle.on:hover { filter: brightness(1.06); }
+
+.last-plan { padding: 12px 14px; border-radius: 9px; background: var(--rescue-soft); font-size: .86rem; line-height: 1.45; color: var(--text); }
+.last-plan b { font-weight: 700; }
+
+.finding { margin: 0 0 11px; font-size: .92rem; line-height: 1.55; color: var(--muted); padding-left: 14px; border-left: 2px solid var(--green); }
+.finding:last-child { margin-bottom: 0; }
+.finding b { color: var(--text); font-weight: 700; }
+
+.bar-row { display: grid; grid-template-columns: minmax(84px, 33%) 1fr 26px; align-items: center; gap: 10px; margin-bottom: 8px; }
+.bar-label { font-size: .84rem; color: var(--text); }
+.bar-track { height: 9px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.bar-fill { display: block; height: 100%; border-radius: 999px; background: var(--green); }
+.bar-count { font-size: .78rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+
 /* Short "what does this do" lines above controls that need explaining */
 .how-to { margin: 0 0 13px; font-size: .84rem; line-height: 1.5; color: var(--muted); }
 .how-to b { color: var(--text); font-weight: 700; }

@@ -249,6 +249,7 @@
                 <label>Why now?<select id="cravingTrigger"></select></label>
               </div>
               <label>How strong is it? <span class="optional">1 small — 5 very strong</span><input id="cravingIntensity" type="range" min="1" max="5" step="1" value="3"></label>
+              <div class="last-plan" id="lastPlan" hidden><b>Last time you said you would:</b> <span id="lastPlanText"></span></div>
               <button class="rescue-button" id="startSurfButton" type="button">Wait until it passes</button>
               <p class="small-note">Write it down even if you end up using. Nothing here is a score against you.</p>
             </div>
@@ -278,8 +279,11 @@
               <p class="debrief-sub">You came back and wrote it down. That is what matters. Starting again is the win.</p>
             </div>
             <div class="form-stack">
-              <label>What happened just before? <span class="optional">you can skip this</span><input id="debriefBefore" maxlength="160" placeholder="Where you were, who with, what had just happened"></label>
-              <label>What did it help with? <span class="optional">you can skip this</span><input id="debriefGave" maxlength="160" placeholder="Feeling calm, a break, company, forgetting something"></label>
+              <div>
+                <p class="chip-label">What did it help with? <span class="optional">tap any that fit</span></p>
+                <div class="preset-row" id="helpChips"></div>
+              </div>
+              <label>Anything else about it? <span class="optional">you can skip this</span><input id="debriefGave" maxlength="160" placeholder="In your own words"></label>
               <label>What small thing can you do now? <span class="optional">you can skip this</span><input id="debriefNext" maxlength="160" placeholder="Something you can do in ten minutes"></label>
               <button class="primary-button full-width" id="saveDebriefButton" type="button">Save note</button>
               <button class="text-button full-width-text" id="skipDebriefButton" type="button">Not now</button>
@@ -288,13 +292,18 @@
         </section>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">Your notes</p><h2>What it helps with</h2></div></div>
-          <div id="fieldNotes" class="field-notes"></div>
+          <div class="panel-heading"><div><p class="eyebrow">What it is for</p><h2 id="helpHeadline">Nothing here yet.</h2></div></div>
+          <div id="helpBreakdown"></div>
         </section>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">Pattern</p><h2>Why it happens</h2></div></div>
-          <p class="small-note" id="cravingPattern"></p>
+          <div class="panel-heading"><div><p class="eyebrow">What your answers show</p><h2>Why it happens</h2></div></div>
+          <div id="cravingFindings"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading"><div><p class="eyebrow">In your own words</p><h2>Your notes</h2></div></div>
+          <div id="fieldNotes" class="field-notes"></div>
         </section>
 
         <section class="panel transactions-panel">

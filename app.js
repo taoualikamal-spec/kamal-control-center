@@ -30,6 +30,10 @@ const defaultSubstances = [
 
 const cravingTriggers = ['Stress', 'Money worry', 'Bored', 'After food', 'With people', 'Tired', 'Feeling sad', 'My usual time', 'Other'];
 
+// Tappable answers, so "what did it help with" can actually be counted.
+// Free text could never be added up, which is why that panel stayed empty.
+const helpOptions = ['Calm down', 'Take a break', 'Stop thinking', 'Be with people', 'Reward myself', 'Get to sleep', 'Feel less bored'];
+
 // Shown one after another while waiting. The feeling rises, then falls —
 // the job is to stay busy for a few minutes, not to be strong.
 const surfScript = [
@@ -333,7 +337,7 @@ function saveDebrief() {
   const entry = state.cravings.find(item => item.id === pendingDebriefId);
   if (entry) {
     entry.debrief = {
-      before: $('#debriefBefore').value.trim(),
+      gaveTags: $$('#helpChips .chip-toggle.on').map(button => button.dataset.help),
       gave: $('#debriefGave').value.trim(),
       next: $('#debriefNext').value.trim()
     };
@@ -352,7 +356,61 @@ function skipDebrief() {
 
 function closeDebrief() {
   pendingDebriefId = null;
-  ['#debriefBefore', '#debriefGave', '#debriefNext'].forEach(selector => { $(selector).value = ''; });
+  ['#debriefGave', '#debriefNext'].forEach(selector => { $(selector).value = ''; });
+  const chips = $('#helpChips');
+  chips.dataset.for = '';
+  chips.innerHTML = '';
+}
+
+function timeOfDayBand(iso) {
+  const hour = new Date(iso).getHours();
+  if (hour < 6) return 'late at night';
+  if (hour < 12) return 'in the morning';
+  if (hour < 18) return 'in the afternoon';
+  return 'in the evening';
+}
+
+/* Turns the answers into findings. Uses the three fields that used to be
+   collected and never read: how strong it was, how long the wait took,
+   and what it helped with. */
+function cravingInsights() {
+  const all = state.cravings;
+  const waited = all.filter(entry => entry.outcome === 'rode' && Number(entry.secondsSurfed) > 0);
+  const average = list => (list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : 0);
+
+  const tagCounts = {};
+  all.forEach(entry => (entry.debrief?.gaveTags || []).forEach(tag => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }));
+  const tags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+
+  const reasons = all.reduce((map, entry) => ({ ...map, [entry.trigger]: (map[entry.trigger] || 0) + 1 }), {});
+  const topReason = Object.entries(reasons).sort((a, b) => b[1] - a[1])[0];
+
+  const bands = all.reduce((map, entry) => {
+    const band = timeOfDayBand(entry.createdAt);
+    return { ...map, [band]: (map[band] || 0) + 1 };
+  }, {});
+  const topBand = Object.entries(bands).sort((a, b) => b[1] - a[1])[0];
+
+  const waitMinutes = waited.map(entry => Math.max(1, Math.round(entry.secondsSurfed / 60)));
+  const strong = waited.filter(entry => Number(entry.intensity) >= 4).map(entry => entry.secondsSurfed / 60);
+  const mild = waited.filter(entry => Number(entry.intensity) <= 3).map(entry => entry.secondsSurfed / 60);
+
+  const lastPlan = all.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .find(entry => entry.debrief?.next)?.debrief.next || '';
+
+  return {
+    total: all.length,
+    tags,
+    tagTotal: tags.reduce((sum, item) => sum + item[1], 0),
+    topReason,
+    topBand,
+    waitedCount: waited.length,
+    avgWait: waitMinutes.length ? Math.round(average(waitMinutes)) : 0,
+    maxWait: waitMinutes.length ? Math.max(...waitMinutes) : 0,
+    strongAvg: average(strong), mildAvg: average(mild),
+    strongCount: strong.length, mildCount: mild.length,
+    lastPlan
+  };
 }
 
 function cravingsOn(dateFilter) { return state.cravings.filter(dateFilter); }
@@ -763,7 +821,17 @@ function renderBody() {
   if (debriefing) {
     const entry = state.cravings.find(item => item.id === pendingDebriefId);
     $('#debriefHeadline').textContent = debriefHeadline(entry?.outcome);
+    // Rebuild the choices only for a new debrief, so taps are not wiped by a re-render.
+    const chips = $('#helpChips');
+    if (chips.dataset.for !== pendingDebriefId) {
+      chips.dataset.for = pendingDebriefId;
+      chips.innerHTML = helpOptions.map(option => `<button type="button" class="chip-button chip-toggle" data-help="${escapeHtml(option)}" aria-pressed="false">${escapeHtml(option)}</button>`).join('');
+    }
   }
+
+  const lastPlan = cravingInsights().lastPlan;
+  $('#lastPlan').hidden = !lastPlan;
+  if (lastPlan) $('#lastPlanText').textContent = lastPlan;
 
   if (surf) {
     const elapsed = (Date.now() - new Date(surf.startedAt).getTime()) / 1000;
@@ -812,9 +880,60 @@ function renderBody() {
     return `<article class="field-note"><span class="field-note-date">${dateLabel(entry.date)}</span><div>${rows}</div></article>`;
   }).join('') : '<p class="small-note">Notes you write after a hard moment show up here. After a while they show you what it really helps with.</p>';
 
-  $('#cravingPattern').textContent = stats.topTrigger
-    ? `This week it is mostly ${stats.topTrigger.toLowerCase()}. Make a plan for that one moment, not for the whole week.`
-    : 'Add a few, including the times you used. The pattern is what matters, not the score.';
+  renderHelpPanel();
+  renderFindings();
+}
+
+function renderHelpPanel() {
+  const insights = cravingInsights();
+  const headline = $('#helpHeadline');
+  const breakdown = $('#helpBreakdown');
+
+  if (!insights.tags.length) {
+    headline.textContent = 'Nothing here yet.';
+    breakdown.innerHTML = '<p class="small-note">Next time you use, tap what it helped with. After a few times this will show you what it is really for — and that is the thing you can start meeting another way.</p>';
+    return;
+  }
+
+  const [topTag, topCount] = insights.tags[0];
+  headline.textContent = `Most of all, it helps you ${topTag.toLowerCase()}.`;
+  const max = insights.tags[0][1];
+  breakdown.innerHTML = insights.tags.map(([tag, count]) => `<div class="bar-row">
+    <span class="bar-label">${escapeHtml(tag)}</span>
+    <span class="bar-track"><span class="bar-fill" style="width:${Math.round(count / max * 100)}%"></span></span>
+    <span class="bar-count">${count}</span>
+  </div>`).join('')
+    + `<p class="small-note">You reached for it ${topCount} ${topCount === 1 ? 'time' : 'times'} to ${topTag.toLowerCase()}. If you can find another way to ${topTag.toLowerCase()}, the want gets weaker on its own.</p>`;
+}
+
+function renderFindings() {
+  const insights = cravingInsights();
+  const findings = [];
+
+  if (insights.topReason) {
+    findings.push(`It starts with <b>${escapeHtml(insights.topReason[0].toLowerCase())}</b> more than anything else — ${insights.topReason[1]} ${insights.topReason[1] === 1 ? 'time' : 'times'} so far.`);
+  }
+  if (insights.topBand && insights.total >= 3) {
+    findings.push(`It happens most often <b>${insights.topBand[0]}</b>.`);
+  }
+  if (insights.waitedCount >= 2) {
+    findings.push(`When you waited, you usually needed about <b>${insights.avgWait} ${insights.avgWait === 1 ? 'minute' : 'minutes'}</b>. The longest was ${insights.maxWait}.`);
+  }
+  if (insights.strongCount >= 2 && insights.mildCount >= 2) {
+    const strong = insights.strongAvg;
+    const mild = insights.mildAvg;
+    const close = Math.abs(strong - mild) < 1.5;
+    findings.push(close
+      ? `A <b>strong</b> want took about ${strong.toFixed(1)} min to pass, a mild one about ${mild.toFixed(1)} min. Strong or mild, it passes in about the same time — so a strong one is not more dangerous, it just feels louder.`
+      : `A <b>strong</b> want took about ${strong.toFixed(1)} min, a mild one about ${mild.toFixed(1)} min.`);
+  }
+
+  const box = $('#cravingFindings');
+  if (!findings.length) {
+    box.innerHTML = '<p class="small-note">Add a few, including the times you used. Once there are three or four, real patterns show up here: what sets it off, what time of day, and how long you actually need to wait.</p>';
+    return;
+  }
+  box.innerHTML = findings.map(text => `<p class="finding">${text}</p>`).join('');
 }
 
 function renderHabits() {
@@ -1371,6 +1490,11 @@ function registerEvents() {
     const deleteCravingButton = event.target.closest('[data-delete-craving]');
     const gotoDayButton = event.target.closest('[data-goto-day]');
     if (gotoDayButton) { selectTab('day'); setSelectedDate(gotoDayButton.dataset.gotoDay); }
+    const helpChip = event.target.closest('[data-help]');
+    if (helpChip) {
+      const on = helpChip.classList.toggle('on');
+      helpChip.setAttribute('aria-pressed', String(on));
+    }
     if (removeSubstanceButton) removeSubstance(removeSubstanceButton.dataset.removeSubstance);
     if (deleteCravingButton) deleteCraving(deleteCravingButton.dataset.deleteCraving);
     if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
