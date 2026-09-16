@@ -452,6 +452,13 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .date-nav .icon-button:disabled { opacity: .35; cursor: default; }
 .date-nav .icon-button:disabled:hover { background: var(--surface); }
 .date-nav .text-button { margin-left: 2px; }
+.date-nav-current { font-size: .86rem; font-weight: 700; color: var(--text); min-width: 8.5em; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Week strip doubles as the day picker */
+.week-day { width: 100%; padding: 4px 2px; cursor: pointer; transition: transform .12s ease, border-color .12s ease; }
+.week-day:hover { transform: translateY(-1px); border-color: var(--green); }
+.week-day.selected { border-color: var(--green); box-shadow: inset 0 0 0 1px var(--green); }
+.week-day.selected b { color: var(--green); }
 
 .jump-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .jump-row .secondary-button { flex: 1 1 auto; width: auto; font-size: .82rem; }

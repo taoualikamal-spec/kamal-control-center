@@ -485,6 +485,7 @@ function renderDay() {
   $('#dayTitle').textContent = dayTitleFor(selectedDate);
   $('#todayLabel').textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   $('#scorecardDate').textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  $('#dayCursorLabel').textContent = new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
   $('#dayNext').disabled = isToday;
   $('#dayToday').hidden = isToday;
 
@@ -519,6 +520,7 @@ function renderMonth() {
   const bigMove = getMonthData(selectedMonth);
   const isThisMonth = selectedMonth === monthKey();
 
+  $('#monthCursorLabel').textContent = new Date(`${anchor}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   $('#monthNext').disabled = isThisMonth;
   $('#monthThis').hidden = isThisMonth;
   $('#monthLabel').textContent = new Date(`${anchor}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -840,7 +842,13 @@ function renderStreaks() {
   $('#weekChecks').innerHTML = weekDates().map(date => {
     const checked = habits.filter(habit => state.days[date]?.habits?.[habit.id]).length;
     const label = new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 1);
-    return `<div class="week-day ${habits.length && checked === habits.length ? 'complete' : ''} ${date === today() ? 'today' : ''}"><b>${label}</b><span>${checked}/${habits.length}</span></div>`;
+    const classes = [
+      'week-day',
+      habits.length && checked === habits.length ? 'complete' : '',
+      date === today() ? 'today' : '',
+      date === selectedDate ? 'selected' : ''
+    ].filter(Boolean).join(' ');
+    return `<button type="button" class="${classes}" data-goto-day="${date}" aria-pressed="${date === selectedDate}" title="Open ${dayTitleFor(date)}"><b>${label}</b><span>${checked}/${habits.length}</span></button>`;
   }).join('');
 }
 
@@ -1302,6 +1310,8 @@ function registerEvents() {
     const taskDeleteButton = event.target.closest('[data-task-delete]');
     const removeSubstanceButton = event.target.closest('[data-remove-substance]');
     const deleteCravingButton = event.target.closest('[data-delete-craving]');
+    const gotoDayButton = event.target.closest('[data-goto-day]');
+    if (gotoDayButton) { selectTab('day'); setSelectedDate(gotoDayButton.dataset.gotoDay); }
     if (removeSubstanceButton) removeSubstance(removeSubstanceButton.dataset.removeSubstance);
     if (deleteCravingButton) deleteCraving(deleteCravingButton.dataset.deleteCraving);
     if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
