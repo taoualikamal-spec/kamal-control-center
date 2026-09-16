@@ -1,24 +1,30 @@
-# Kamal Control Center
+# Up Again
 
-A private, offline-first tracker with:
+A private app to help you get back up. Everything stays on your own phone.
 
-- 60 / 20 / 15 / 5 envelope money splitting (envelopes are fully editable — add, rename, re-weight, or remove)
-- income, spending, debt, and emergency-cash tracking, with editable entries
-- a manual and live **Time Stolen** tracker, with editable entries
-- an editable daily consistency scorecard
-- light / dark / follow-device appearance
-- local backup export/import
+It has four parts:
 
-## Use on desktop
+- **Day** — small things. Your daily habits, the one thing that matters, up to three things to do, and a short note before bed.
+- **Month** — big things. Your money split into boxes, what you got and spent, what you paid back, and one big thing for the month.
+- **Year** — the whole year. What you learned, and twelve months of your focus time.
+- **Waiting** — for when you want to smoke or use. It helps you wait a few minutes until the feeling passes.
 
-Double-click `index.html`. It works locally and stores its data in that browser.
+The app never scores you and never punishes a bad day. If you miss a day, you just start again the next day.
 
-## Use on a phone as an installable web app
+## Use it on a computer
 
-The folder must be hosted on an HTTPS URL. Upload the entire folder to a static host such as GitHub Pages, Cloudflare Pages, or Netlify, then open the URL on the phone and choose **Install app** / **Add to Home Screen** from the browser menu.
+Open `index.html`. It works on its own and keeps your information in that browser.
 
-## Important: device sync
+## Use it on a phone
 
-The app deliberately stores data only on the current device. To move your data between desktop and phone, click **Export all data** on one device and **Import backup** on the other.
+The files need to be on an `https://` web address. Put the whole folder on a free host such as GitHub Pages, Cloudflare Pages or Netlify. Then open the address on your phone and choose **Install app** or **Add to Home Screen** from the browser menu.
 
-Automatic syncing would need a chosen cloud account and a backend. Do not put financial data into a public repository or public website.
+## Moving your information between devices
+
+Your information is kept **only on the device you use**. To move it, press **Save a backup file** on one device and **Load a backup file** on the other.
+
+Automatic syncing would need a cloud account and a server. Do not put money or personal information into a public website or a public code repository.
+
+## A note
+
+This app is a help, not medical care. For smoking, weed or feeling very low, a doctor or a counsellor can do things an app cannot.

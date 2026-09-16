@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1325">
-  <meta name="description" content="A private system for climbing back: money, attention, urges and daily practice.">
+  <meta name="description" content="A private app to help you get back up: your money, your time, waiting out hard moments, and small daily habits.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
@@ -19,240 +19,240 @@
         <span><strong>Up Again</strong><small>Eternal Victory</small></span>
       </a>
       <div class="top-actions">
-        <button class="icon-button rescue-icon" id="rescueButton" title="I'm craving — open the urge tool" aria-label="I'm craving — open the urge tool">≈</button>
-        <button class="icon-button" id="themeButton" title="Switch theme" aria-label="Switch theme">☾</button>
+        <button class="icon-button rescue-icon" id="rescueButton" title="I want to smoke or use — help me wait" aria-label="I want to smoke or use — help me wait">≈</button>
+        <button class="icon-button" id="themeButton" title="Change colours" aria-label="Change colours">☾</button>
         <button class="icon-button" id="installButton" hidden title="Install app">↓</button>
-        <button class="icon-button" id="quickBackupButton" title="Export a backup">↧</button>
+        <button class="icon-button" id="quickBackupButton" title="Save a backup file">↧</button>
       </div>
     </header>
 
     <main>
-      <!-- ============ DAY — the place of small actions ============ -->
+      <!-- ============ DAY ============ -->
       <section id="day" class="page active" aria-labelledby="dayTitle">
         <div class="page-heading">
           <div>
             <p class="eyebrow" id="todayLabel"></p>
             <h1 id="dayTitle">Today</h1>
-            <p class="lede">Days are the place of small actions. One of them is enough to count.</p>
+            <p class="lede">Small things, done today. One is enough.</p>
           </div>
           <div class="heading-actions">
-            <button class="rescue-button compact" data-open-tab="body">I'm craving</button>
-            <button class="primary-button" data-open-tab="month">+ Record money</button>
+            <button class="rescue-button compact" data-open-tab="body">Help me wait</button>
+            <button class="primary-button" data-open-tab="month">+ Add money</button>
           </div>
         </div>
 
-        <div class="date-nav" role="group" aria-label="Choose which day to view">
-          <button class="icon-button" id="dayPrev" title="Previous day" aria-label="Previous day">‹</button>
+        <div class="date-nav" role="group" aria-label="Choose a day">
+          <button class="icon-button" id="dayPrev" title="Day before" aria-label="Day before">‹</button>
           <span class="date-nav-current" id="dayCursorLabel"></span>
-          <button class="icon-button" id="dayNext" title="Next day" aria-label="Next day">›</button>
-          <button class="text-button" id="dayToday" hidden>Jump to today</button>
+          <button class="icon-button" id="dayNext" title="Day after" aria-label="Day after">›</button>
+          <button class="text-button" id="dayToday" hidden>Go to today</button>
         </div>
 
         <div class="insight-banner" id="insightBanner"></div>
 
-        <section class="time-score-grid" aria-label="The selected day at a glance">
-          <article class="metric-card"><span>Focus today</span><strong id="focusToday">0 min</strong><small id="focusDetail">Protect one useful block.</small></article>
-          <article class="metric-card"><span>Drifted today</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Notice it, without a verdict.</small></article>
-          <article class="metric-card"><span>Urges ridden today</span><strong id="urgesToday">0</strong><small id="urgesDetail">Every one logged is worth having.</small></article>
+        <section class="time-score-grid" aria-label="This day">
+          <article class="metric-card"><span>Focus time</span><strong id="focusToday">0 min</strong><small id="focusDetail">Keep one good block of time.</small></article>
+          <article class="metric-card"><span>Lost time</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Just notice it. No blame.</small></article>
+          <article class="metric-card"><span>Times you waited</span><strong id="urgesToday">0</strong><small id="urgesDetail">Every one you write down helps.</small></article>
         </section>
 
         <div class="two-column">
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Small actions</p><h2>Today's non-negotiables</h2></div><span class="date-chip" id="scorecardDate"></span></div>
+            <div class="panel-heading"><div><p class="eyebrow">Small things</p><h2>What I do every day</h2></div><span class="date-chip" id="scorecardDate"></span></div>
             <div class="focus-goal-inline">
               <div class="ring-holder" data-focus-ring></div>
-              <div><p class="eyebrow">Focus goal</p><small data-focus-caption class="focus-caption"></small><button class="text-button" data-open-tab="time">Start a focus block →</button></div>
+              <div><p class="eyebrow">Focus goal</p><small data-focus-caption class="focus-caption"></small><button class="text-button" data-open-tab="time">Start focus time →</button></div>
             </div>
             <div class="habit-list" id="habitList"></div>
-            <label class="priority-input">One meaningful move<input id="priorityInput" maxlength="180" placeholder="The one thing that would make today count"></label>
+            <label class="priority-input">The one thing that matters today<input id="priorityInput" maxlength="180" placeholder="If you only do one thing, what is it?"></label>
             <div class="task-block">
-              <div class="task-block-head"><span>Top tasks today</span><small data-task-count class="task-count"></small></div>
+              <div class="task-block-head"><span>Things to do today</span><small data-task-count class="task-count"></small></div>
               <div class="task-list" data-task-list></div>
-              <form id="dayTaskForm" class="task-add"><input id="dayTaskInput" data-task-input maxlength="140" placeholder="Add a task that matters (max 3)"><button type="submit" class="secondary-button">Add</button></form>
+              <form id="dayTaskForm" class="task-add"><input id="dayTaskInput" data-task-input maxlength="140" placeholder="Add a thing to do (3 max)"><button type="submit" class="secondary-button">Add</button></form>
             </div>
-            <label class="priority-input">2-minute closing note<textarea id="dailyReflection" maxlength="500" placeholder="What helped? What pulled at you? What is tomorrow's first move?"></textarea></label>
+            <label class="priority-input">Short note before bed<textarea id="dailyReflection" maxlength="500" placeholder="What helped today? What was hard? What will you do first tomorrow?"></textarea></label>
           </section>
 
           <section class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Momentum</p><h2>The chain, not the streak</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">This week</p><h2>How the week went</h2></div></div>
             <div id="streakCards" class="streak-cards"></div>
             <div class="week-checks" id="weekChecks"></div>
-            <p class="small-note">A missed day is data, not a broken chain. You return at the next decision, not next Monday.</p>
+            <p class="small-note">Tap a day to open it. Missing a day is fine — you just start again the next day.</p>
             <div class="jump-row">
-              <button class="secondary-button" data-open-tab="time">Where your time goes →</button>
-              <button class="secondary-button" data-open-tab="body">Urges &amp; field notes →</button>
+              <button class="secondary-button" data-open-tab="time">See where time goes →</button>
+              <button class="secondary-button" data-open-tab="body">Waiting &amp; notes →</button>
             </div>
           </section>
         </div>
       </section>
 
-      <!-- ============ MONTH — the place of big actions ============ -->
+      <!-- ============ MONTH ============ -->
       <section id="month" class="page" aria-labelledby="monthTitle">
         <div class="page-heading">
-          <div><p class="eyebrow" id="monthLabel">This month</p><h1 id="monthTitle">Big actions</h1><p class="lede">A month is long enough for a real move to land, and short enough to still picture from here.</p></div>
+          <div><p class="eyebrow" id="monthLabel">This month</p><h1 id="monthTitle">Big things</h1><p class="lede">A month is long enough for one big thing to happen.</p></div>
         </div>
 
-        <div class="date-nav" role="group" aria-label="Choose which month to view">
-          <button class="icon-button" id="monthPrev" title="Previous month" aria-label="Previous month">‹</button>
+        <div class="date-nav" role="group" aria-label="Choose a month">
+          <button class="icon-button" id="monthPrev" title="Month before" aria-label="Month before">‹</button>
           <span class="date-nav-current" id="monthCursorLabel"></span>
-          <button class="icon-button" id="monthNext" title="Next month" aria-label="Next month">›</button>
-          <button class="text-button" id="monthThis" hidden>Jump to this month</button>
+          <button class="icon-button" id="monthNext" title="Month after" aria-label="Month after">›</button>
+          <button class="text-button" id="monthThis" hidden>Go to this month</button>
         </div>
 
-        <section class="metric-grid" aria-label="The selected month at a glance">
-          <article class="metric-card"><span>Received</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Record the money you actually receive.</small></article>
-          <article class="metric-card"><span>Spent</span><strong id="monthSpent">0 MAD</strong><small id="monthSpentDetail">Across all envelopes.</small></article>
-          <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD total debt</small></article>
-          <article class="metric-card"><span>Money kept</span><strong id="monthKept">0 MAD</strong><small id="monthKeptDetail">From urges you rode out.</small></article>
+        <section class="metric-grid" aria-label="This month">
+          <article class="metric-card"><span>Money in</span><strong id="monthIncome">0 MAD</strong><small id="monthIncomeDetail">Add the money you really get.</small></article>
+          <article class="metric-card"><span>Money out</span><strong id="monthSpent">0 MAD</strong><small id="monthSpentDetail">From all your money boxes.</small></article>
+          <article class="metric-card"><span>Debt paid</span><strong id="debtPaid">0 MAD</strong><small id="debtDetail">of 45,000 MAD owed</small></article>
+          <article class="metric-card"><span>Money saved</span><strong id="monthKept">0 MAD</strong><small id="monthKeptDetail">From the times you waited.</small></article>
         </section>
 
         <section class="panel big-move-panel">
-          <div class="panel-heading"><div><p class="eyebrow">One campaign</p><h2>The big move this month</h2></div></div>
-          <label class="priority-input">What would make this month count?<input id="bigMoveInput" maxlength="180" placeholder="One thing. Not a list."></label>
-          <label class="big-move-done"><input type="checkbox" id="bigMoveDone"><span>Done — this one landed</span></label>
-          <p class="small-note">Months hold one big action. If it needs a list, it belongs in days.</p>
+          <div class="panel-heading"><div><p class="eyebrow">One big thing</p><h2>The big thing this month</h2></div></div>
+          <label class="priority-input">What would make this month a good one?<input id="bigMoveInput" maxlength="180" placeholder="One thing. Not a list."></label>
+          <label class="big-move-done"><input type="checkbox" id="bigMoveDone"><span>Done — this one happened</span></label>
+          <p class="small-note">A month holds one big thing. If you need a list, it belongs in your days.</p>
         </section>
 
         <div class="rule-strip" id="ruleStrip"></div>
 
         <div class="two-column">
           <section class="panel form-panel">
-            <div class="panel-heading"><div><p class="eyebrow">1. Money in</p><h2>Split a payment</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">1. Money in</p><h2>Money you got</h2></div></div>
             <form id="incomeForm" class="form-stack">
-              <div class="form-row"><label>Amount received (MAD)<input id="incomeAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="14000"></label><label>Received on<input id="incomeDate" type="date" required></label></div>
-              <label>Source<input id="incomeSource" maxlength="80" required placeholder="Simon / InDrive / client"></label>
-              <label>Note <span class="optional">optional</span><input id="incomeNote" maxlength="160" placeholder="Payment, cash, side-work profit..."></label>
-              <div class="split-preview" id="splitPreview"><span>Enter an amount to see the split.</span></div>
-              <button class="primary-button full-width" type="submit">Split into envelopes</button>
-              <button class="text-button cancel-edit" id="cancelIncomeEdit" type="button" hidden>Cancel edit</button>
+              <div class="form-row"><label>How much? (MAD)<input id="incomeAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="14000"></label><label>What day?<input id="incomeDate" type="date" required></label></div>
+              <label>Who from?<input id="incomeSource" maxlength="80" required placeholder="Work, a client, a friend..."></label>
+              <label>Note <span class="optional">you can skip this</span><input id="incomeNote" maxlength="160" placeholder="Pay, cash, extra work..."></label>
+              <div class="split-preview" id="splitPreview"><span>Type an amount to see how it splits.</span></div>
+              <button class="primary-button full-width" type="submit">Split into money boxes</button>
+              <button class="text-button cancel-edit" id="cancelIncomeEdit" type="button" hidden>Cancel change</button>
             </form>
           </section>
 
           <section class="panel form-panel">
-            <div class="panel-heading"><div><p class="eyebrow">2. Money out</p><h2>Record a payment</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">2. Money out</p><h2>Money you spent</h2></div></div>
             <form id="expenseForm" class="form-stack">
-              <div class="form-row"><label>Amount spent (MAD)<input id="expenseAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="200"></label><label>Date<input id="expenseDate" type="date" required></label></div>
-              <label>Envelope<select id="expenseEnvelope" required></select></label>
-              <label>What was it for?<input id="expenseNote" maxlength="160" required placeholder="Food, phone, debt payment..."></label>
-              <button class="secondary-button full-width" type="submit">Record payment</button>
-              <button class="text-button cancel-edit" id="cancelExpenseEdit" type="button" hidden>Cancel edit</button>
+              <div class="form-row"><label>How much? (MAD)<input id="expenseAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="200"></label><label>What day?<input id="expenseDate" type="date" required></label></div>
+              <label>Which money box?<select id="expenseEnvelope" required></select></label>
+              <label>What was it for?<input id="expenseNote" maxlength="160" required placeholder="Food, phone, paying back debt..."></label>
+              <button class="secondary-button full-width" type="submit">Save it</button>
+              <button class="text-button cancel-edit" id="cancelExpenseEdit" type="button" hidden>Cancel change</button>
             </form>
           </section>
         </div>
 
-        <section class="envelope-grid" id="moneyEnvelopes" aria-label="Envelope balances"></section>
+        <section class="envelope-grid" id="moneyEnvelopes" aria-label="Money boxes"></section>
 
         <section class="panel transactions-panel">
-          <div class="panel-heading"><div><p class="eyebrow">This month</p><h2>Money activity</h2></div><button class="text-button" id="clearMonthFilter">Show all</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Activity</th><th>Envelope / source</th><th class="number">Amount</th><th></th></tr></thead><tbody id="transactionRows"></tbody></table></div>
+          <div class="panel-heading"><div><p class="eyebrow">This month</p><h2>All money</h2></div><button class="text-button" id="clearMonthFilter">Show all</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Day</th><th>What</th><th>Money box / from</th><th class="number">How much</th><th></th></tr></thead><tbody id="transactionRows"></tbody></table></div>
         </section>
       </section>
 
-      <!-- ============ YEAR — the whole view, and the puzzle ============ -->
+      <!-- ============ YEAR ============ -->
       <section id="year" class="page" aria-labelledby="yearTitle">
         <div class="page-heading">
-          <div><p class="eyebrow" id="yearLabel">This year</p><h1 id="yearTitle">The whole view</h1><p class="lede">Years are where the small and big actions become one shape — and where you earn the next piece.</p></div>
+          <div><p class="eyebrow" id="yearLabel">This year</p><h1 id="yearTitle">The whole year</h1><p class="lede">All the small and big things, seen together.</p></div>
         </div>
 
         <section class="panel puzzle-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Earned this year</p><h2>The puzzle</h2></div></div>
-          <label class="priority-input">Name this year's piece<input id="yearTheme" maxlength="80" placeholder="Example: the year I stopped bleeding money"></label>
-          <label class="priority-input">What it taught you<textarea id="yearNote" maxlength="600" placeholder="Written at the end, or added to as you go. This becomes an instrument for next year."></textarea></label>
-          <p class="small-note">Each year hands you a piece you did not have before. The pieces are the arsenal.</p>
+          <div class="panel-heading"><div><p class="eyebrow">What you got</p><h2>This year</h2></div></div>
+          <label class="priority-input">Give this year a name<input id="yearTheme" maxlength="80" placeholder="Example: the year I stopped losing money"></label>
+          <label class="priority-input">What did it teach you?<textarea id="yearNote" maxlength="600" placeholder="Write it at the end of the year, or add to it as you go. Next year you will use what you learned here."></textarea></label>
+          <p class="small-note">Every year gives you something you did not have before. That is what you keep.</p>
         </section>
 
-        <section class="metric-grid" id="yearStats" aria-label="This year at a glance"></section>
+        <section class="metric-grid" id="yearStats" aria-label="This year"></section>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">The arc</p><h2>Twelve months of evidence</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">Month by month</p><h2>The 12 months</h2></div></div>
           <div class="arc-wrap"><div id="yearArc" class="year-arc"></div></div>
-          <p class="small-note" id="yearSuggestion">Bars show focused hours. Thin months are information, not accusation.</p>
+          <p class="small-note" id="yearSuggestion">The bars show hours of focus time. Small months are just information, not blame.</p>
         </section>
       </section>
 
-      <!-- ============ TIME — detail view, reached from Day ============ -->
+      <!-- ============ TIME ============ -->
       <section id="time" class="page" aria-labelledby="timeTitle">
         <div class="page-heading">
-          <div><p class="eyebrow">Attention</p><h1 id="timeTitle">Where your time goes</h1><p class="lede">See it plainly, without a verdict, then choose the next block on purpose.</p></div>
+          <div><p class="eyebrow">Time</p><h1 id="timeTitle">Where your time goes</h1><p class="lede">See it clearly, with no blame, then choose what to do next.</p></div>
           <button class="text-button" data-open-tab="day">← Back to today</button>
         </div>
 
         <div class="panel focus-goal-panel focus-goal-inline">
           <div class="ring-holder" data-focus-ring></div>
-          <div><p class="eyebrow">Focus goal today</p><small data-focus-caption class="focus-caption"></small></div>
+          <div><p class="eyebrow">Focus goal</p><small data-focus-caption class="focus-caption"></small></div>
         </div>
 
         <div class="time-score-grid">
-          <article class="metric-card"><span>Drifted today</span><strong id="stolenTodayTime">0 min</strong><small id="stolenWeek">0 min this week</small></article>
-          <article class="metric-card"><span>Focused today</span><strong id="focusedTodayTime">0 min</strong><small id="focusWeek">0 min this week</small></article>
-          <article class="metric-card"><span>Most common drift</span><strong id="biggestThief">—</strong><small id="biggestThiefDetail">Log a few days to spot a pattern.</small></article>
+          <article class="metric-card"><span>Lost time today</span><strong id="stolenTodayTime">0 min</strong><small id="stolenWeek">0 min this week</small></article>
+          <article class="metric-card"><span>Focus time today</span><strong id="focusedTodayTime">0 min</strong><small id="focusWeek">0 min this week</small></article>
+          <article class="metric-card"><span>Where time goes most</span><strong id="biggestThief">—</strong><small id="biggestThiefDetail">Add a few days to see the pattern.</small></article>
         </div>
 
         <div class="two-column">
           <section class="panel timer-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Focus timer</p><h2 id="timerTitle">Start a focus session</h2></div><span class="timer-display" id="timerDisplay">00:00:00</span></div>
+            <div class="panel-heading"><div><p class="eyebrow">Timer</p><h2 id="timerTitle">Start focus time</h2></div><span class="timer-display" id="timerDisplay">00:00:00</span></div>
             <div class="form-stack">
-              <div class="form-row"><label>Type<select id="timerType"><option value="focus">Focused work</option><option value="stolen">Drifted time</option></select></label><label>Category<select id="timerCategory"></select></label></div>
-              <label id="timerTaskWrap">Focus on<select id="timerTask"></select></label>
-              <label>What are you doing? <span class="optional">optional</span><input id="timerNote" maxlength="160" placeholder="Context helps you see patterns"></label>
+              <div class="form-row"><label>Which kind?<select id="timerType"><option value="focus">Focus time</option><option value="stolen">Lost time</option></select></label><label>Doing what?<select id="timerCategory"></select></label></div>
+              <label id="timerTaskWrap">Working on<select id="timerTask"></select></label>
+              <label>What are you doing? <span class="optional">you can skip this</span><input id="timerNote" maxlength="160" placeholder="A few words help you see the pattern"></label>
               <div class="preset-row" id="focusPresets">
                 <button class="chip-button" type="button" data-focus-minutes="25">25 min</button>
                 <button class="chip-button" type="button" data-focus-minutes="50">50 min</button>
                 <button class="chip-button" type="button" data-focus-minutes="90">90 min</button>
-                <button class="chip-button" type="button" id="startOpenTimer">Open timer</button>
-                <button class="chip-button ghost" type="button" data-break-minutes="5">5 min break</button>
+                <button class="chip-button" type="button" id="startOpenTimer">No time limit</button>
+                <button class="chip-button ghost" type="button" data-break-minutes="5">5 min rest</button>
               </div>
-              <button class="danger-button full-width" id="stopTimerButton" type="button" disabled>Stop &amp; log</button>
+              <button class="danger-button full-width" id="stopTimerButton" type="button" disabled>Stop and save</button>
             </div>
           </section>
           <section class="panel form-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Manual entry</p><h2>Add time already gone</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Add by hand</p><h2>Time that already passed</h2></div></div>
             <form id="timeForm" class="form-stack">
-              <div class="form-row"><label>Type<select id="timeType"><option value="stolen">Drifted time</option><option value="focus">Focused work</option></select></label><label>Minutes<input id="timeMinutes" type="number" min="1" max="1440" required placeholder="30"></label></div>
-              <div class="form-row"><label>Category<select id="timeCategory"></select></label><label>Date<input id="timeDate" type="date" required></label></div>
-              <label>Note <span class="optional">optional</span><input id="timeNote" maxlength="160" placeholder="What happened before it started?"></label>
-              <button class="secondary-button full-width" type="submit">Log time</button>
-              <button class="text-button cancel-edit" id="cancelTimeEdit" type="button" hidden>Cancel edit</button>
+              <div class="form-row"><label>Which kind?<select id="timeType"><option value="stolen">Lost time</option><option value="focus">Focus time</option></select></label><label>How many minutes?<input id="timeMinutes" type="number" min="1" max="1440" required placeholder="30"></label></div>
+              <div class="form-row"><label>Doing what?<select id="timeCategory"></select></label><label>What day?<input id="timeDate" type="date" required></label></div>
+              <label>Note <span class="optional">you can skip this</span><input id="timeNote" maxlength="160" placeholder="What happened before it started?"></label>
+              <button class="secondary-button full-width" type="submit">Save it</button>
+              <button class="text-button cancel-edit" id="cancelTimeEdit" type="button" hidden>Cancel change</button>
             </form>
           </section>
         </div>
 
         <section class="panel pattern-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Weekly pattern</p><h2>Data instead of guilt</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">This week</p><h2>See it, don't judge it</h2></div></div>
           <div id="weeklyBars" class="weekly-bars"></div>
-          <p class="small-note" id="timeSuggestion">Start with one entry. Accuracy beats perfection.</p>
+          <p class="small-note" id="timeSuggestion">Start with one entry. Being honest matters more than being perfect.</p>
         </section>
         <section class="panel transactions-panel">
-          <div class="panel-heading"><div><p class="eyebrow">Recent activity</p><h2>Time log</h2></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Note</th><th class="number">Minutes</th><th></th></tr></thead><tbody id="timeRows"></tbody></table></div>
+          <div class="panel-heading"><div><p class="eyebrow">Your list</p><h2>All your time</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Day</th><th>Kind</th><th>Doing what</th><th>Note</th><th class="number">Minutes</th><th></th></tr></thead><tbody id="timeRows"></tbody></table></div>
         </section>
       </section>
 
-      <!-- ============ BODY — detail view, reached from the topbar rescue ============ -->
+      <!-- ============ WAITING (urges) ============ -->
       <section id="body" class="page" aria-labelledby="bodyTitle">
         <div class="page-heading">
-          <div><p class="eyebrow">Urges</p><h1 id="bodyTitle">Ride the wave</h1><p class="lede">A craving climbs, crests and falls. You don't have to beat it — you only have to outlast a few minutes.</p></div>
+          <div><p class="eyebrow">Waiting</p><h1 id="bodyTitle">Wait it out</h1><p class="lede">The feeling gets strong, then it gets weak again. You only have to wait a few minutes.</p></div>
           <button class="text-button" data-open-tab="day">← Back to today</button>
         </div>
 
-        <section class="time-score-grid" id="cravingStats" aria-label="Urge summary"></section>
+        <section class="time-score-grid" id="cravingStats" aria-label="Your waiting"></section>
 
         <section class="panel surf-panel">
           <div id="bodyIdle">
-            <div class="panel-heading"><div><p class="eyebrow">Right now</p><h2>Feeling the pull?</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Right now</p><h2>Do you want to smoke or use?</h2></div></div>
             <div class="form-stack">
               <div class="form-row">
-                <label>What for<select id="cravingSubstance"></select></label>
-                <label>What set it off<select id="cravingTrigger"></select></label>
+                <label>Want what?<select id="cravingSubstance"></select></label>
+                <label>Why now?<select id="cravingTrigger"></select></label>
               </div>
-              <label>How strong is it? <span class="optional">1 quiet — 5 loud</span><input id="cravingIntensity" type="range" min="1" max="5" step="1" value="3"></label>
-              <button class="rescue-button" id="startSurfButton" type="button">I'm craving — ride it out</button>
-              <p class="small-note">Logging counts whether or not you use. Nothing here is scored against you.</p>
+              <label>How strong is it? <span class="optional">1 small — 5 very strong</span><input id="cravingIntensity" type="range" min="1" max="5" step="1" value="3"></label>
+              <button class="rescue-button" id="startSurfButton" type="button">Help me wait</button>
+              <p class="small-note">Write it down even if you end up using. Nothing here is a score against you.</p>
             </div>
           </div>
 
           <div id="bodySurf" hidden>
-            <div class="panel-heading"><div><p class="eyebrow" id="surfContext"></p><h2 id="surfTitle">Riding it out</h2></div><span class="timer-display countdown" id="surfDisplay">05:00</span></div>
+            <div class="panel-heading"><div><p class="eyebrow" id="surfContext"></p><h2 id="surfTitle">Waiting</h2></div><span class="timer-display countdown" id="surfDisplay">05:00</span></div>
             <div class="wave-wrap">
               <svg viewBox="0 0 300 80" aria-hidden="true">
                 <path class="wave-path" d="M10 70 C 80 70, 105 14, 150 14 S 220 70, 290 70" fill="none" stroke-width="2"></path>
@@ -262,86 +262,86 @@
             </div>
             <p class="surf-script" id="surfScript"></p>
             <div class="outcome-row" id="surfOutcomes">
-              <button class="chip-button" type="button" data-outcome="rode">I rode it out</button>
+              <button class="chip-button" type="button" data-outcome="rode">I waited</button>
               <button class="chip-button" type="button" data-outcome="less">I used less</button>
               <button class="chip-button ghost" type="button" data-outcome="used">I used</button>
             </div>
-            <button class="text-button full-width-text" id="cancelSurfButton" type="button">Stop without logging</button>
+            <button class="text-button full-width-text" id="cancelSurfButton" type="button">Stop, don't save</button>
           </div>
 
           <div id="bodyDebrief" hidden>
             <div class="debrief-open">
               <p class="debrief-line" id="debriefHeadline"></p>
-              <p class="debrief-sub">A long war is won by returning to the field, not by never being hit. You came back to log it — that is the return.</p>
+              <p class="debrief-sub">You came back and wrote it down. That is what matters. Starting again is the win.</p>
             </div>
             <div class="form-stack">
-              <label>What was happening just before? <span class="optional">optional</span><input id="debriefBefore" maxlength="160" placeholder="Where you were, who with, what had just happened"></label>
-              <label>What did it give you? <span class="optional">optional</span><input id="debriefGave" maxlength="160" placeholder="Calm, a break, company, escape from something"></label>
-              <label>What's the next smallest move? <span class="optional">optional</span><input id="debriefNext" maxlength="160" placeholder="Something doable in the next ten minutes"></label>
-              <button class="primary-button full-width" id="saveDebriefButton" type="button">Save the note</button>
+              <label>What happened just before? <span class="optional">you can skip this</span><input id="debriefBefore" maxlength="160" placeholder="Where you were, who with, what had just happened"></label>
+              <label>What did it help with? <span class="optional">you can skip this</span><input id="debriefGave" maxlength="160" placeholder="Feeling calm, a break, company, forgetting something"></label>
+              <label>What small thing can you do now? <span class="optional">you can skip this</span><input id="debriefNext" maxlength="160" placeholder="Something you can do in ten minutes"></label>
+              <button class="primary-button full-width" id="saveDebriefButton" type="button">Save note</button>
               <button class="text-button full-width-text" id="skipDebriefButton" type="button">Not now</button>
             </div>
           </div>
         </section>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">Field notes</p><h2>What the pull is for</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">Your notes</p><h2>What it helps with</h2></div></div>
           <div id="fieldNotes" class="field-notes"></div>
         </section>
 
         <section class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">Pattern</p><h2>What sets it off</h2></div></div>
+          <div class="panel-heading"><div><p class="eyebrow">Pattern</p><h2>Why it happens</h2></div></div>
           <p class="small-note" id="cravingPattern"></p>
         </section>
 
         <section class="panel transactions-panel">
-          <div class="panel-heading"><div><p class="eyebrow">History</p><h2>Urge log</h2></div></div>
-          <div class="table-wrap"><table><thead><tr><th>Date</th><th>What</th><th>Trigger</th><th>Outcome</th><th class="number">Rode</th><th></th></tr></thead><tbody id="cravingRows"></tbody></table></div>
+          <div class="panel-heading"><div><p class="eyebrow">Your list</p><h2>Every time</h2></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Day</th><th>What</th><th>Why</th><th>What happened</th><th class="number">Waited</th><th></th></tr></thead><tbody id="cravingRows"></tbody></table></div>
         </section>
       </section>
 
-      <!-- ============ SETUP ============ -->
+      <!-- ============ SETTINGS ============ -->
       <section id="settings" class="page" aria-labelledby="settingsTitle">
-        <div class="page-heading"><div><p class="eyebrow">System settings</p><h1 id="settingsTitle">Your rules, your data</h1><p class="lede">Keep the rules simple enough to follow when life is busy.</p></div></div>
+        <div class="page-heading"><div><p class="eyebrow">Settings</p><h1 id="settingsTitle">Your rules, your data</h1><p class="lede">Keep the rules simple enough to follow on a busy day.</p></div></div>
         <div class="two-column">
           <section class="panel form-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Envelope rule</p><h2>60 / 20 / 15 / 5</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Money rule</p><h2>60 / 20 / 15 / 5</h2></div></div>
             <form id="settingsForm" class="form-stack">
-              <label>Appearance<select id="themeSelect"><option value="light">Light mode</option><option value="dark">Dark mode</option><option value="system">Follow device</option></select></label>
-              <p class="settings-group-title">Cash envelopes</p>
+              <label>Colours<select id="themeSelect"><option value="light">Light</option><option value="dark">Dark</option><option value="system">Same as my phone</option></select></label>
+              <p class="settings-group-title">Money boxes</p>
               <div id="envelopeSettings"></div>
-              <button class="secondary-button full-width" id="addEnvelopeButton" type="button">+ Add envelope</button>
-              <p class="settings-group-title">Daily actions</p>
+              <button class="secondary-button full-width" id="addEnvelopeButton" type="button">+ Add a money box</button>
+              <p class="settings-group-title">Things I do every day</p>
               <div id="habitSettings"></div>
-              <button class="secondary-button full-width" id="addHabitButton" type="button">+ Add daily action</button>
-              <p class="settings-group-title">Cutting down</p>
+              <button class="secondary-button full-width" id="addHabitButton" type="button">+ Add one</button>
+              <p class="settings-group-title">Things I want to stop</p>
               <div id="substanceSettings"></div>
-              <button class="secondary-button full-width" id="addSubstanceButton" type="button">+ Add something you're cutting down</button>
-              <label>Daily focus target (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
-              <label>Total debt currently owed (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
-              <p class="small-note">Envelope percentages must equal 100. Add categories that match your real spending. Monthly targets are guidance, not permission to spend.</p>
-              <button class="primary-button full-width" type="submit">Save settings</button>
+              <button class="secondary-button full-width" id="addSubstanceButton" type="button">+ Add one</button>
+              <label>Focus goal each day (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
+              <label>How much money do you owe? (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
+              <p class="small-note">The money box numbers must add up to 100. Use boxes that match how you really spend. A monthly goal is a guide, not permission to spend.</p>
+              <button class="primary-button full-width" type="submit">Save</button>
             </form>
           </section>
           <section class="panel data-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Private backup</p><h2>Keep ownership of your data</h2></div></div>
-            <p>Your records stay in this browser. Export a backup before changing phones or browsers.</p>
+            <div class="panel-heading"><div><p class="eyebrow">Backup</p><h2>Your data stays with you</h2></div></div>
+            <p>Everything is kept on this phone only. Save a backup file before you change phone or browser.</p>
             <div class="form-stack top-gap">
-              <button class="secondary-button full-width" id="exportButton" type="button">Export all data (.json)</button>
-              <label class="file-button">Import backup<input id="importInput" type="file" accept="application/json,.json" hidden></label>
-              <button class="danger-button full-width" id="resetButton" type="button">Delete local app data</button>
+              <button class="secondary-button full-width" id="exportButton" type="button">Save a backup file</button>
+              <label class="file-button">Load a backup file<input id="importInput" type="file" accept="application/json,.json" hidden></label>
+              <button class="danger-button full-width" id="resetButton" type="button">Delete everything</button>
             </div>
-            <p class="small-note" id="storageNote">No backup created yet.</p>
+            <p class="small-note" id="storageNote">No backup file saved yet.</p>
           </section>
         </div>
       </section>
     </main>
 
-    <nav class="bottom-nav" aria-label="Main navigation">
+    <nav class="bottom-nav" aria-label="Main menu">
       <button class="nav-item active" data-tab="day"><span>☀</span>Day</button>
       <button class="nav-item" data-tab="month"><span>◑</span>Month</button>
       <button class="nav-item" data-tab="year"><span>◎</span>Year</button>
-      <button class="nav-item" data-tab="settings"><span>⚙</span>Setup</button>
+      <button class="nav-item" data-tab="settings"><span>⚙</span>Settings</button>
     </nav>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
