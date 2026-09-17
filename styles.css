@@ -505,3 +505,47 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .arc-cell span { font-size: .66rem; color: var(--quiet); font-variant-numeric: tabular-nums; }
 .arc-cell.current .arc-track { outline: 2px solid var(--green); outline-offset: 1px; }
 .arc-cell.current b { color: var(--green); }
+
+/* ---------- Bills: pay what is urgent first, split only the rest ----------
+   Late is shown in the warm rescue colour, never red: a late bill is
+   information to act on, not a verdict. */
+.check-row { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; font-weight: 400; }
+.check-row input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; padding: 0; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--green); }
+.check-row > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: .88rem; color: var(--text); }
+.check-row small { font-size: .74rem; color: var(--muted); font-weight: 400; line-height: 1.4; }
+
+.bills-panel { margin-bottom: 18px; }
+.bills-summary { margin: 0 0 12px; font-size: .9rem; color: var(--muted); }
+.bills-summary b { color: var(--text); }
+.bills-list, .pay-list { display: grid; gap: 8px; }
+.bill-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
+.bill-row.compact { grid-template-columns: minmax(0, 1fr) auto; }
+.bill-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bill-main b { font-size: .9rem; color: var(--text); overflow-wrap: anywhere; }
+.bill-main small { font-size: .74rem; color: var(--muted); }
+.bill-amount { font-weight: 700; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bill-paid { width: auto; min-height: 38px; padding: 7px 13px; font-size: .8rem; }
+.bill-row.late, .pay-row.late { border-color: var(--rescue-bg); }
+.bill-row.late .bill-main small, .pay-row.late small { color: var(--rescue-bg); }
+
+.bills-details { margin-top: 14px; }
+.bills-details > summary { cursor: pointer; list-style: none; padding: 8px 0; font-size: .86rem; font-weight: 700; color: var(--blue); }
+.bills-details > summary::-webkit-details-marker { display: none; }
+.bills-details > summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.bills-details[open] > summary { margin-bottom: 10px; }
+
+.pay-first { display: grid; gap: 8px; padding: 13px; border: 1px dashed var(--line); border-radius: 11px; }
+.pay-first[hidden] { display: none; }
+.pay-first .how-to { margin-bottom: 2px; }
+.pay-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-3); }
+.pay-row input[type="number"] { margin-top: 0; min-height: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.pay-summary { margin: 4px 0 0; font-size: .86rem; line-height: 1.5; color: var(--muted); }
+.pay-summary b { color: var(--text); }
+.pay-summary.over, .pay-summary.over b { color: var(--rescue-bg); }
+.still-waiting { display: block; margin-top: 6px; }
+
+@media (max-width: 580px) {
+  .bill-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .bill-row .bill-paid { grid-column: 1 / -1; width: 100%; }
+  .pay-row { grid-template-columns: minmax(0, 1fr) 92px; }
+}

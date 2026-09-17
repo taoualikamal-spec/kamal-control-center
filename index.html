@@ -115,6 +115,35 @@
           <p class="small-note">A month holds one big thing. If you need a list, it belongs in your days.</p>
         </section>
 
+        <section class="panel bills-panel">
+          <div class="panel-heading"><div><p class="eyebrow">Bills and urgent payments</p><h2>Still to pay</h2></div></div>
+          <p class="how-to">Add the things you must pay — rent, electricity, money you owe. <b>When money comes in, these are paid first</b>, and only what is left is split into your boxes. That way your boxes only show money you really have.</p>
+          <p class="bills-summary" id="billsSummary"></p>
+          <div class="bills-list" id="billsList"></div>
+
+          <details class="bills-details" id="billAddDetails">
+            <summary>+ Add a bill or urgent payment</summary>
+            <form id="billForm" class="form-stack">
+              <div class="form-row">
+                <label>What is it?<input id="billName" maxlength="60" required placeholder="Rent, electricity, money I owe someone..."></label>
+                <label>How much? (MAD)<input id="billAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="3000"></label>
+              </div>
+              <div class="form-row">
+                <label>Next date it is due<input id="billDue" type="date" required></label>
+                <label>Which money box pays it?<select id="billEnvelope"></select></label>
+              </div>
+              <label class="check-row"><input type="checkbox" id="billMonthly" checked><span>It comes back every month</span></label>
+              <label class="check-row"><input type="checkbox" id="billEssential" checked><span>Needed to live<small>Home, food, water, electricity. These are suggested first when money is short.</small></span></label>
+              <button class="secondary-button full-width" type="submit">Add it</button>
+            </form>
+          </details>
+
+          <details class="bills-details">
+            <summary>All your bills (<span id="billsAllCount">0</span>)</summary>
+            <div class="bills-list" id="billsAll"></div>
+          </details>
+        </section>
+
         <div class="rule-strip" id="ruleStrip"></div>
 
         <div class="two-column">
@@ -124,6 +153,12 @@
               <div class="form-row"><label>How much? (MAD)<input id="incomeAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="14000"></label><label>What day?<input id="incomeDate" type="date" required></label></div>
               <label>Who from?<input id="incomeSource" maxlength="80" required placeholder="Work, a client, a friend..."></label>
               <label>Note <span class="optional">you can skip this</span><input id="incomeNote" maxlength="160" placeholder="Pay, cash, extra work..."></label>
+              <div class="pay-first" id="payFirst">
+                <p class="chip-label">Pay these first</p>
+                <p class="how-to">Suggested: what is late or due this week, with things needed to live first. Change anything you want.</p>
+                <div class="pay-list" id="payFirstList"></div>
+                <p class="pay-summary" id="paySummary" hidden></p>
+              </div>
               <div class="split-preview" id="splitPreview"><span>Type an amount to see how it splits.</span></div>
               <button class="primary-button full-width" type="submit">Split into money boxes</button>
               <button class="text-button cancel-edit" id="cancelIncomeEdit" type="button" hidden>Cancel change</button>
@@ -337,7 +372,7 @@
               <button class="secondary-button full-width" id="addSubstanceButton" type="button">+ Add one</button>
               <label>Focus goal each day (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
               <label>How much money do you owe? (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>
-              <p class="small-note">The money box numbers must add up to 100. Use boxes that match how you really spend. A monthly goal is a guide, not permission to spend.</p>
+              <p class="small-note">The money box numbers must add up to 100. They are used on the money left after bills are paid. Use boxes that match how you really spend. A monthly goal is a guide, not permission to spend.</p>
               <button class="primary-button full-width" type="submit">Save</button>
             </form>
           </section>

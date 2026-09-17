@@ -58,6 +58,7 @@ function defaultState() {
     transactions: [],
     timeEntries: [],
     cravings: [],
+    bills: [],
     days: {},
     months: {},
     years: {},
@@ -121,6 +122,7 @@ function loadState() {
     stored.transactions ||= [];
     stored.timeEntries ||= [];
     stored.cravings ||= [];
+    stored.bills ||= [];
     stored.days ||= {};
     stored.dismissedInsights ||= [];
     stored.months ||= {};
@@ -137,6 +139,8 @@ let toastTimeout;
 let selectedDate;   // set during init, once today() exists
 let selectedMonth;
 let editingIncomeId = null;
+let payPicks = {};          // what the user chose to pay first from incoming money
+let payPicksTouched = false; // false while the app's suggestion is still in charge
 let editingExpenseId = null;
 let editingTimeId = null;
 let themePreference = localStorage.getItem('kamal-theme') || 'system';
@@ -515,6 +519,115 @@ function totalIncome(dateKey = today()) {
   return entriesForMonth(state.transactions, dateKey).filter(entry => entry.type === 'income').reduce((sum, entry) => sum + Number(entry.amount), 0);
 }
 
+/* ---------- Bills: pay what is urgent first, split only what is left ----------
+   A fixed percentage split assumes money arrives before the bills. Under money
+   pressure it arrives after them, so the boxes showed money that was already
+   gone and the app stopped describing reality. Bills are paid first; the split
+   rule only ever touches the remainder. */
+
+const BILL_SOON_DAYS = 7;
+const sumAmounts = list => list.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+function daysInMonth(key) {
+  const [year, month] = key.split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+// A bill due on the 31st falls on the last day of shorter months.
+function billDueIn(bill, key) {
+  const day = Number(String(bill.dueDate).slice(8, 10)) || 1;
+  return `${key}-${String(Math.min(day, daysInMonth(key))).padStart(2, '0')}`;
+}
+
+function billPaidAmount(billId, month) {
+  return sumAmounts(state.transactions.filter(entry => entry.type === 'expense' && entry.billId === billId && (month === 'once' || entry.billMonth === month)));
+}
+
+/* A monthly bill appears for this month; for last month while still unpaid,
+   to catch a late payment without piling up months nobody tracked; and for
+   next month once it is within a week — rent due on the 1st has to show up
+   on the 28th, which is exactly when money tends to arrive. */
+function billInstances(asOf = today()) {
+  const current = monthKey(asOf);
+  const months = [shiftMonth(current, -1), current, shiftMonth(current, 1)];
+  const out = [];
+  state.bills.forEach(bill => {
+    const slots = bill.monthly
+      ? months
+        .filter(key => key >= monthKey(bill.dueDate))
+        .map(key => ({ month: key, due: billDueIn(bill, key) }))
+        .filter(slot => slot.month <= current || daysUntil(slot.due, asOf) <= BILL_SOON_DAYS)
+      : [{ month: 'once', due: bill.dueDate }];
+    slots.forEach(slot => {
+      const paid = billPaidAmount(bill.id, slot.month);
+      out.push({ key: `${bill.id}|${slot.month}`, bill, month: slot.month, due: slot.due, amount: Number(bill.amount), paid, remaining: Math.max(0, Number(bill.amount) - paid) });
+    });
+  });
+  return out;
+}
+
+function unpaidBills(asOf = today()) {
+  return billInstances(asOf).filter(item => item.remaining > 0).sort((a, b) => a.due.localeCompare(b.due));
+}
+
+function daysUntil(date, from = today()) {
+  return Math.round((new Date(`${date}T12:00:00`) - new Date(`${from}T12:00:00`)) / DAY_MS);
+}
+
+function dueLabel(date, from = today()) {
+  const days = daysUntil(date, from);
+  if (days < 0) return `${-days} ${days === -1 ? 'day' : 'days'} late`;
+  if (days === 0) return 'due today';
+  if (days === 1) return 'due tomorrow';
+  if (days <= BILL_SOON_DAYS) return `due in ${days} days`;
+  return `due ${dateLabel(date)}`;
+}
+
+const isUrgentBill = (item, from = today()) => daysUntil(item.due, from) <= BILL_SOON_DAYS;
+
+/* The suggestion when money arrives: what is late or due this week, things
+   needed to live first (home, food, water, electricity before other debts),
+   part-paying the last one if the money runs out. */
+function suggestedPicks(amount, asOf = today()) {
+  const picks = {};
+  let left = Math.max(0, Math.round(Number(amount) || 0));
+  unpaidBills(asOf)
+    .filter(item => isUrgentBill(item, asOf))
+    .sort((a, b) => (Number(Boolean(b.bill.essential)) - Number(Boolean(a.bill.essential))) || a.due.localeCompare(b.due))
+    .forEach(item => {
+      if (left <= 0) return;
+      const pay = Math.min(item.remaining, left);
+      picks[item.key] = { on: true, amount: pay };
+      left -= pay;
+    });
+  return picks;
+}
+
+function resetPayPicks() { payPicks = {}; payPicksTouched = false; }
+
+function currentPayPlan(amount) {
+  const unpaid = unpaidBills();
+  if (!payPicksTouched) payPicks = suggestedPicks(amount);
+  const valid = new Set(unpaid.map(item => item.key));
+  Object.keys(payPicks).forEach(key => { if (!valid.has(key)) delete payPicks[key]; });
+  const chosen = unpaid
+    .filter(item => payPicks[item.key] && payPicks[item.key].on)
+    .map(item => ({ item, pay: Math.max(0, Math.min(item.remaining, Math.round(Number(payPicks[item.key].amount) || 0))) }))
+    .filter(entry => entry.pay > 0);
+  return { unpaid, chosen, paying: chosen.reduce((sum, entry) => sum + entry.pay, 0) };
+}
+
+function paymentsFromIncome(incomeId) {
+  return state.transactions.filter(entry => entry.type === 'expense' && entry.fromIncomeId === incomeId);
+}
+
+// Bills money lands in (and leaves from) its own box; only the rest is split.
+function combineAllocations(payments, remainder) {
+  const allocations = splitIncome(Math.max(0, remainder));
+  payments.forEach(payment => { allocations[payment.envelopeId] = (allocations[payment.envelopeId] || 0) + Number(payment.amount); });
+  return allocations;
+}
+
 function debtPaidTotal() {
   return state.transactions.filter(entry => entry.type === 'expense' && entry.envelopeId === 'debt').reduce((sum, entry) => sum + Number(entry.amount), 0);
 }
@@ -637,7 +750,11 @@ function renderMonth() {
   $('#monthThis').hidden = isThisMonth;
   $('#monthLabel').textContent = new Date(`${anchor}T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   $('#monthIncome').textContent = money(income);
-  $('#monthIncomeDetail').textContent = income ? `Split ${state.settings.envelopes.map(item => item.percent).join(' / ')} into your boxes.` : 'Add the money you really get.';
+  const paidFirst = sumAmounts(entriesForMonth(state.transactions, anchor).filter(entry => entry.type === 'expense' && entry.fromIncomeId));
+  const rule = state.settings.envelopes.map(item => item.percent).join(' / ');
+  $('#monthIncomeDetail').textContent = !income ? 'Add the money you really get.'
+    : paidFirst ? `${money(paidFirst)} went to bills first. The rest was split ${rule}.`
+    : `Split ${rule} into your boxes.`;
   $('#monthSpent').textContent = money(spent);
   $('#monthSpentDetail').textContent = income ? `${money(Math.max(0, income - spent))} of this month's money is left.` : 'From all your money boxes.';
   $('#debtPaid').textContent = money(debtPaid);
@@ -647,7 +764,85 @@ function renderMonth() {
 
   $('#bigMoveInput').value = bigMove.bigMove || '';
   $('#bigMoveDone').checked = Boolean(bigMove.done);
+  renderBills();
   renderEnvelopes(anchor);
+}
+
+function envelopeName(id) {
+  return state.settings.envelopes.find(envelope => envelope.id === id)?.name || 'Money box removed';
+}
+
+function renderBills() {
+  const unpaid = unpaidBills();
+  const total = unpaid.reduce((sum, item) => sum + item.remaining, 0);
+  const urgent = unpaid.filter(item => isUrgentBill(item)).length;
+
+  $('#billsSummary').innerHTML = !state.bills.length
+    ? 'Nothing added yet.'
+    : unpaid.length
+      ? `<b>${money(total)}</b> still to pay across ${unpaid.length} ${unpaid.length === 1 ? 'thing' : 'things'}${urgent ? ` — <b>${urgent}</b> late or due this week` : ''}.`
+      : 'Everything is paid for now.';
+
+  $('#billsList').innerHTML = unpaid.map(item => `<div class="bill-row ${daysUntil(item.due) < 0 ? 'late' : ''}">
+    <span class="bill-main"><b>${escapeHtml(item.bill.name)}</b><small>${escapeHtml(envelopeName(item.bill.envelopeId))} · ${dueLabel(item.due)}${item.paid ? ` · ${money(item.paid)} paid` : ''}</small></span>
+    <span class="bill-amount">${money(item.remaining)}</span>
+    <button class="secondary-button bill-paid" type="button" data-bill-paid="${item.key}" title="I already paid this with money I had">Paid</button>
+  </div>`).join('');
+
+  $('#billsAllCount').textContent = state.bills.length;
+  $('#billsAll').innerHTML = state.bills.map(bill => `<div class="bill-row compact">
+    <span class="bill-main"><b>${escapeHtml(bill.name)}</b><small>${money(bill.amount)} · ${bill.monthly ? `every month, day ${Number(String(bill.dueDate).slice(8, 10))}` : `once, ${dateLabel(bill.dueDate)}`} · ${escapeHtml(envelopeName(bill.envelopeId))}${bill.essential ? ' · needed to live' : ''}</small></span>
+    <button class="delete-button" type="button" data-bill-delete="${bill.id}" title="Remove this bill" aria-label="Remove ${escapeHtml(bill.name)}">×</button>
+  </div>`).join('') || '<p class="small-note">No bills yet.</p>';
+
+  const select = $('#billEnvelope');
+  const chosen = select.value;
+  select.innerHTML = state.settings.envelopes.map(envelope => `<option value="${envelope.id}">${escapeHtml(envelope.name)}</option>`).join('');
+  if (state.settings.envelopes.some(envelope => envelope.id === chosen)) select.value = chosen;
+  $('#billDue').value ||= today();
+  if (!state.bills.length) $('#billAddDetails').open = true;
+}
+
+function addBill(event) {
+  event.preventDefault();
+  const name = $('#billName').value.trim();
+  const amount = Math.round(Number($('#billAmount').value));
+  const dueDate = $('#billDue').value;
+  if (!name || !amount || amount < 1 || !dueDate) return;
+  state.bills.push({
+    id: makeId(), name, amount, dueDate, envelopeId: $('#billEnvelope').value,
+    monthly: $('#billMonthly').checked, essential: $('#billEssential').checked,
+    createdAt: new Date().toISOString()
+  });
+  saveState();
+  $('#billForm').reset();
+  $('#billDue').value = today();
+  resetPayPicks();
+  renderAll();
+  toast(`${name} added. When money comes in, it can be paid first.`);
+}
+
+function deleteBill(id) {
+  const bill = state.bills.find(item => item.id === id);
+  state.bills = state.bills.filter(item => item.id !== id);
+  resetPayPicks();
+  saveState();
+  renderAll();
+  toast(bill ? `${bill.name} removed. Payments you already made stay in your history.` : 'Removed.');
+}
+
+// For a bill paid with money already in a box, not with money just arriving.
+function markBillPaid(key) {
+  const item = unpaidBills().find(entry => entry.key === key);
+  if (!item) return;
+  state.transactions.push({
+    id: makeId(), type: 'expense', amount: item.remaining, date: today(), envelopeId: item.bill.envelopeId,
+    note: item.bill.name, billId: item.bill.id, billMonth: item.month, createdAt: new Date().toISOString()
+  });
+  resetPayPicks();
+  saveState();
+  renderAll();
+  toast(`${item.bill.name} marked as paid — ${money(item.remaining)} from ${envelopeName(item.bill.envelopeId)}.`);
 }
 
 function inYear(date, year) { return String(date).slice(0, 4) === String(year); }
@@ -698,12 +893,99 @@ function renderYear() {
     : 'The bars show hours of focus time. Small months are just information, not blame.';
 }
 
+function incomeAmountValue() { return Math.round(Number($('#incomeAmount').value || 0)); }
+
 function renderIncomePreview() {
-  const amount = Number($('#incomeAmount').value || 0);
-  const box = $('#splitPreview');
-  if (!amount) { box.innerHTML = '<span>Type an amount to see how it splits.</span>'; return; }
+  const amount = incomeAmountValue();
+  renderPayFirstList(amount);
+  renderPaySummary(amount);
+}
+
+function renderSplitPieces(amount) {
   const splits = splitIncome(amount);
-  box.innerHTML = state.settings.envelopes.map(envelope => `<div class="split-piece" style="background:${envelope.color}18;color:${envelope.color}">${escapeHtml(envelope.name)}<b>${money(splits[envelope.id])}</b></div>`).join('');
+  return state.settings.envelopes.map(envelope => `<div class="split-piece" style="background:${envelope.color}18;color:${envelope.color}">${escapeHtml(envelope.name)}<b>${money(splits[envelope.id])}</b></div>`).join('');
+}
+
+function renderPayFirstList(amount) {
+  const section = $('#payFirst');
+  const list = $('#payFirstList');
+  if (editingIncomeId) { section.hidden = true; return; }
+  section.hidden = false;
+  const { unpaid } = currentPayPlan(amount);
+
+  if (!unpaid.length) {
+    list.innerHTML = state.bills.length
+      ? '<p class="small-note">Nothing is waiting to be paid right now, so all of this money goes into your boxes.</p>'
+      : '<p class="small-note">Do urgent bills always take this money first? Add them under <b>Still to pay</b> above. Then they are paid first here, and only what is left is split into your boxes.</p>';
+    return;
+  }
+
+  list.innerHTML = unpaid.map(item => {
+    const pick = payPicks[item.key];
+    const value = pick ? pick.amount : item.remaining;
+    const envelope = state.settings.envelopes.find(entry => entry.id === item.bill.envelopeId);
+    return `<div class="pay-row ${daysUntil(item.due) < 0 ? 'late' : ''}" data-pay-key="${item.key}">
+      <label class="check-row"><input type="checkbox" data-pay-pick ${pick && pick.on ? 'checked' : ''}><span><b>${escapeHtml(item.bill.name)}</b><small>${escapeHtml(envelope?.name || 'Money box removed')} · ${dueLabel(item.due)}${item.paid ? ` · ${money(item.paid)} already paid` : ''}</small></span></label>
+      <input type="number" data-pay-amount min="1" max="${item.remaining}" step="1" value="${Number(value) || ''}" aria-label="How much to pay for ${escapeHtml(item.bill.name)}">
+    </div>`;
+  }).join('');
+}
+
+// Reads the whole list back from the form, so nothing depends on which box changed.
+function syncPayPicksFromForm() {
+  payPicksTouched = true;
+  payPicks = {};
+  $$('#payFirstList [data-pay-key]').forEach(row => {
+    payPicks[row.dataset.payKey] = {
+      on: row.querySelector('[data-pay-pick]').checked,
+      amount: row.querySelector('[data-pay-amount]').value
+    };
+  });
+  renderPaySummary(incomeAmountValue());
+}
+
+function renderPaySummary(amount) {
+  const preview = $('#splitPreview');
+  const summary = $('#paySummary');
+  const submit = $('#incomeForm button[type="submit"]');
+  summary.classList.remove('over');
+
+  if (editingIncomeId) {
+    const linked = paymentsFromIncome(editingIncomeId);
+    const linkedTotal = sumAmounts(linked);
+    summary.hidden = !linked.length;
+    summary.innerHTML = linked.length ? `<b>${money(linkedTotal)}</b> of this money already paid ${linked.length} ${linked.length === 1 ? 'bill' : 'bills'}. Those stay as they are. Only the rest is split again.` : '';
+    preview.innerHTML = !amount ? '<span>Type an amount to see how it splits.</span>'
+      : amount - linkedTotal > 0 ? renderSplitPieces(amount - linkedTotal)
+      : '<span>Nothing is left to split after the bills this money paid.</span>';
+    return;
+  }
+
+  const { unpaid, chosen, paying } = currentPayPlan(amount);
+  const left = amount - paying;
+  submit.textContent = paying ? 'Pay these first, split the rest' : 'Split into money boxes';
+
+  if (!unpaid.length) {
+    summary.hidden = true;
+  } else if (!amount) {
+    summary.hidden = false;
+    summary.innerHTML = 'Type how much you got, and the app will suggest what to pay first.';
+  } else if (left < 0) {
+    summary.hidden = false;
+    summary.classList.add('over');
+    summary.innerHTML = `You chose to pay <b>${money(paying)}</b> but got <b>${money(amount)}</b>. Lower something by <b>${money(-left)}</b>.`;
+  } else {
+    const coveredKeys = new Set(chosen.filter(entry => entry.pay >= entry.item.remaining).map(entry => entry.item.key));
+    const waiting = unpaid.filter(item => isUrgentBill(item) && !coveredKeys.has(item.key)).length;
+    summary.hidden = false;
+    summary.innerHTML = `You got <b>${money(amount)}</b> · pay first <b>${money(paying)}</b> · <b>${money(left)}</b> left for your boxes.`
+      + (waiting ? `<span class="still-waiting">${waiting} urgent ${waiting === 1 ? 'thing is' : 'things are'} still waiting after this. If you cannot pay someone this time, tell them before the date — people usually agree to wait when they hear it early.</span>` : '');
+  }
+
+  if (!amount) preview.innerHTML = '<span>Type an amount to see how it splits.</span>';
+  else if (left < 0) preview.innerHTML = '<span>Nothing to split until the amounts above fit.</span>';
+  else if (left === 0) preview.innerHTML = '<span>All of this money goes to bills. Nothing is left to split this time — that is fine.</span>';
+  else preview.innerHTML = renderSplitPieces(left);
 }
 
 function renderTransactions() {
@@ -713,7 +995,10 @@ function renderTransactions() {
     const isIncome = entry.type === 'income';
     const envelope = state.settings.envelopes.find(item => item.id === entry.envelopeId);
     const description = isIncome ? `<strong>${escapeHtml(entry.source)}</strong><br><small>${escapeHtml(entry.note || 'Money in')}</small>` : `<strong>${escapeHtml(entry.note)}</strong><br><small>${escapeHtml(envelope?.name || 'Money box removed')}</small>`;
-    const allocation = isIncome ? Object.entries(entry.allocations || {}).map(([id, amount]) => `${state.settings.envelopes.find(item => item.id === id)?.percent || 0}% ${money(amount)}`).join(' · ') : escapeHtml(envelope?.name || '');
+    const paidFirst = isIncome ? sumAmounts(paymentsFromIncome(entry.id)) : 0;
+    const allocation = isIncome
+      ? (paidFirst ? `Paid bills first ${money(paidFirst)} · split ${money(entry.amount - paidFirst)}` : Object.entries(entry.allocations || {}).map(([id, amount]) => `${state.settings.envelopes.find(item => item.id === id)?.percent || 0}% ${money(amount)}`).join(' · '))
+      : `${escapeHtml(envelope?.name || '')}${entry.billId ? ' · bill' : ''}`;
     return `<tr><td>${dateLabel(entry.date)}</td><td>${description}</td><td>${allocation}</td><td class="number ${isIncome ? 'positive' : 'negative'}">${isIncome ? '+' : '−'}${money(entry.amount)}</td><td class="row-actions"><button class="icon-action" data-edit-transaction="${entry.id}" title="Change this" aria-label="Change this">✎</button><button class="delete-button" data-delete-transaction="${entry.id}" title="Delete this" aria-label="Delete this">×</button></td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-row">No money added yet.</td></tr>';
 }
@@ -1107,18 +1392,39 @@ function addIncome(event) {
   event.preventDefault();
   const amount = Math.round(Number($('#incomeAmount').value));
   if (!amount || amount < 1) return;
-  const fields = { amount, date: $('#incomeDate').value, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim(), allocations: splitIncome(amount) };
+  const date = $('#incomeDate').value;
+  const base = { amount, date, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim() };
+
   if (editingIncomeId) {
+    // Bills this money already paid stay paid; only the remainder is split again.
+    const linked = paymentsFromIncome(editingIncomeId);
+    const linkedTotal = sumAmounts(linked);
+    if (amount < linkedTotal) { toast(`This money already paid ${money(linkedTotal)} in bills, so it cannot be less than that.`); return; }
     const entry = state.transactions.find(item => item.id === editingIncomeId);
-    if (entry) Object.assign(entry, fields);
-  } else {
-    state.transactions.push({ id: makeId(), type: 'income', ...fields, createdAt: new Date().toISOString() });
+    if (entry) Object.assign(entry, base, { allocations: combineAllocations(linked, amount - linkedTotal) });
+    saveState();
+    cancelIncomeEdit();
+    renderAll();
+    toast('Money updated and split again.');
+    return;
   }
-  const wasEditing = Boolean(editingIncomeId);
+
+  const { chosen, paying } = currentPayPlan(amount);
+  if (paying > amount) { toast(`You chose to pay ${money(paying)} but got ${money(amount)}. Lower something first.`); return; }
+
+  const incomeId = makeId();
+  const createdAt = new Date().toISOString();
+  const payments = chosen.map(({ item, pay }) => ({
+    id: makeId(), type: 'expense', amount: pay, date, envelopeId: item.bill.envelopeId, note: item.bill.name,
+    billId: item.bill.id, billMonth: item.month, fromIncomeId: incomeId, createdAt
+  }));
+  state.transactions.push({ id: incomeId, type: 'income', ...base, allocations: combineAllocations(payments, amount - paying), createdAt }, ...payments);
   saveState();
   cancelIncomeEdit();
   renderAll();
-  toast(wasEditing ? 'Money updated and split again.' : `${money(amount)} split into your money boxes.`);
+  toast(payments.length
+    ? `Paid ${payments.length} ${payments.length === 1 ? 'thing' : 'things'} first (${money(paying)}), then split ${money(amount - paying)} into your boxes.`
+    : `${money(amount)} split into your money boxes.`);
 }
 
 function addExpense(event) {
@@ -1162,7 +1468,7 @@ function addTimeEntry(event) {
 function editTransaction(id) {
   const entry = state.transactions.find(item => item.id === id);
   if (!entry) return;
-  selectTab('money');
+  selectTab('month');
   if (entry.type === 'income') {
     cancelExpenseEdit();
     editingIncomeId = id;
@@ -1211,10 +1517,11 @@ function setFormEditing(formSelector, editing, submitLabel) {
 
 function cancelIncomeEdit() {
   editingIncomeId = null;
+  resetPayPicks();
   $('#incomeForm').reset();
   $('#incomeDate').value = today();
-  renderIncomePreview();
   setFormEditing('#incomeForm', false, 'Split into money boxes');
+  renderIncomePreview();
 }
 
 function cancelExpenseEdit() {
@@ -1418,17 +1725,20 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.bills ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';
 }
 
 function deleteTransaction(id) {
-  state.transactions = state.transactions.filter(entry => entry.id !== id);
+  const linked = paymentsFromIncome(id);
+  const removed = new Set([id, ...linked.map(entry => entry.id)]);
+  state.transactions = state.transactions.filter(entry => !removed.has(entry.id));
   if (editingIncomeId === id) cancelIncomeEdit();
-  if (editingExpenseId === id) cancelExpenseEdit();
-  saveState(); renderAll(); toast('Deleted.');
+  if (editingExpenseId && removed.has(editingExpenseId)) cancelExpenseEdit();
+  saveState(); renderAll();
+  toast(linked.length ? `Deleted, with the ${linked.length} ${linked.length === 1 ? 'payment' : 'payments'} made from it.` : 'Deleted.');
 }
 function deleteTime(id) {
   state.timeEntries = state.timeEntries.filter(entry => entry.id !== id);
@@ -1476,6 +1786,9 @@ function registerEvents() {
   $('#addEnvelopeButton').addEventListener('click', addEnvelope);
   $('#addHabitButton').addEventListener('click', addHabit);
   $('#addSubstanceButton').addEventListener('click', addSubstance);
+  $('#billForm').addEventListener('submit', addBill);
+  $('#payFirstList').addEventListener('input', syncPayPicksFromForm);
+  $('#payFirstList').addEventListener('change', syncPayPicksFromForm);
   $('#startSurfButton').addEventListener('click', beginSurf);
   $('#cancelSurfButton').addEventListener('click', cancelSurf);
   $('#saveDebriefButton').addEventListener('click', saveDebrief);
@@ -1521,6 +1834,10 @@ function registerEvents() {
     const deleteCravingButton = event.target.closest('[data-delete-craving]');
     const gotoDayButton = event.target.closest('[data-goto-day]');
     if (gotoDayButton) { selectTab('day'); setSelectedDate(gotoDayButton.dataset.gotoDay); }
+    const billPaidButton = event.target.closest('[data-bill-paid]');
+    if (billPaidButton) markBillPaid(billPaidButton.dataset.billPaid);
+    const billDeleteButton = event.target.closest('[data-bill-delete]');
+    if (billDeleteButton) deleteBill(billDeleteButton.dataset.billDelete);
     const dismissButton = event.target.closest('[data-dismiss-finding]');
     if (dismissButton) dismissFinding(dismissButton.dataset.dismissFinding);
     const helpChip = event.target.closest('[data-help]');
