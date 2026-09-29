@@ -54,7 +54,7 @@ const envelopePalette = ['#69a9ff', '#ba9aff', '#ff9b70', '#53d6ad', '#f7c968', 
 function defaultState() {
   return {
     version: 1,
-    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), substances: structuredClone(defaultSubstances), debtTotal: 45000, dailyFocusTarget: 120 },
+    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), substances: structuredClone(defaultSubstances), debtTotal: 45000, dailyFocusTarget: 120, keepForLiving: 0 },
     transactions: [],
     timeEntries: [],
     cravings: [],
@@ -110,6 +110,7 @@ function normalizeSettings(settings) {
   settings.substances = (settings.substances && settings.substances.length ? settings.substances : structuredClone(defaultSubstances)).map(item => ({ costPerUse: 0, ...item }));
   settings.debtTotal = Number(settings.debtTotal ?? 45000);
   settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
+  settings.keepForLiving = Math.max(0, Number(settings.keepForLiving ?? 0));
   upgradeWording(settings);
   return settings;
 }
@@ -122,7 +123,7 @@ function loadState() {
     stored.transactions ||= [];
     stored.timeEntries ||= [];
     stored.cravings ||= [];
-    stored.bills ||= [];
+    stored.bills = normalizeBills(stored.bills);
     stored.days ||= {};
     stored.dismissedInsights ||= [];
     stored.months ||= {};
@@ -526,6 +527,20 @@ function totalIncome(dateKey = today()) {
    rule only ever touches the remainder. */
 
 const BILL_SOON_DAYS = 7;
+
+/* Three levels, not a yes/no flag. Fuel is not just "needed to live" — it is
+   what earns tomorrow's money, so nothing may be paid before it. */
+const BILL_ORDER = { earn: 0, live: 1, other: 2 };
+const billPriorityLabel = { earn: 'to earn money', live: 'to live', other: '' };
+const billRank = bill => (BILL_ORDER[bill.priority] === undefined ? BILL_ORDER.live : BILL_ORDER[bill.priority]);
+
+// Bills saved before the three levels existed carried a yes/no "needed to live".
+function normalizeBills(bills) {
+  return (bills || []).map(bill => ({
+    ...bill,
+    priority: bill.priority || (bill.essential === false ? 'other' : 'live')
+  }));
+}
 const sumAmounts = list => list.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
 
 function daysInMonth(key) {
@@ -588,15 +603,25 @@ const isUrgentBill = (item, from = today()) => daysUntil(item.due, from) <= BILL
 /* The suggestion when money arrives: what is late or due this week, things
    needed to live first (home, food, water, electricity before other debts),
    part-paying the last one if the money runs out. */
+function keepForLiving() { return Math.max(0, Number(state.settings.keepForLiving || 0)); }
+
+/* What to pay when money arrives: what earns money, then what you need to
+   live, then everything else — but money set aside for the days ahead is
+   held back before any of that "everything else" is suggested. Without it
+   the app happily hands a whole payment to a debt and leaves nothing for
+   fuel and food, which is how it gave the wrong answer once already. */
 function suggestedPicks(amount, asOf = today()) {
   const picks = {};
   let left = Math.max(0, Math.round(Number(amount) || 0));
+  const reserve = keepForLiving();
   unpaidBills(asOf)
     .filter(item => isUrgentBill(item, asOf))
-    .sort((a, b) => (Number(Boolean(b.bill.essential)) - Number(Boolean(a.bill.essential))) || a.due.localeCompare(b.due))
+    .sort((a, b) => (billRank(a.bill) - billRank(b.bill)) || a.due.localeCompare(b.due))
     .forEach(item => {
       if (left <= 0) return;
-      const pay = Math.min(item.remaining, left);
+      const spendable = billRank(item.bill) <= BILL_ORDER.live ? left : Math.max(0, left - reserve);
+      if (spendable <= 0) return;
+      const pay = Math.min(item.remaining, spendable);
       picks[item.key] = { on: true, amount: pay };
       left -= pay;
     });
@@ -791,7 +816,7 @@ function renderBills() {
 
   $('#billsAllCount').textContent = state.bills.length;
   $('#billsAll').innerHTML = state.bills.map(bill => `<div class="bill-row compact">
-    <span class="bill-main"><b>${escapeHtml(bill.name)}</b><small>${money(bill.amount)} · ${bill.monthly ? `every month, day ${Number(String(bill.dueDate).slice(8, 10))}` : `once, ${dateLabel(bill.dueDate)}`} · ${escapeHtml(envelopeName(bill.envelopeId))}${bill.essential ? ' · needed to live' : ''}</small></span>
+    <span class="bill-main"><b>${escapeHtml(bill.name)}</b><small>${money(bill.amount)} · ${bill.monthly ? `every month, day ${Number(String(bill.dueDate).slice(8, 10))}` : `once, ${dateLabel(bill.dueDate)}`} · ${escapeHtml(envelopeName(bill.envelopeId))}${billPriorityLabel[bill.priority] ? ` · ${billPriorityLabel[bill.priority]}` : ''}</small></span>
     <button class="delete-button" type="button" data-bill-delete="${bill.id}" title="Remove this bill" aria-label="Remove ${escapeHtml(bill.name)}">×</button>
   </div>`).join('') || '<p class="small-note">No bills yet.</p>';
 
@@ -811,7 +836,7 @@ function addBill(event) {
   if (!name || !amount || amount < 1 || !dueDate) return;
   state.bills.push({
     id: makeId(), name, amount, dueDate, envelopeId: $('#billEnvelope').value,
-    monthly: $('#billMonthly').checked, essential: $('#billEssential').checked,
+    monthly: $('#billMonthly').checked, priority: $('#billPriority').value,
     createdAt: new Date().toISOString()
   });
   saveState();
@@ -925,7 +950,7 @@ function renderPayFirstList(amount) {
     const value = pick ? pick.amount : item.remaining;
     const envelope = state.settings.envelopes.find(entry => entry.id === item.bill.envelopeId);
     return `<div class="pay-row ${daysUntil(item.due) < 0 ? 'late' : ''}" data-pay-key="${item.key}">
-      <label class="check-row"><input type="checkbox" data-pay-pick ${pick && pick.on ? 'checked' : ''}><span><b>${escapeHtml(item.bill.name)}</b><small>${escapeHtml(envelope?.name || 'Money box removed')} · ${dueLabel(item.due)}${item.paid ? ` · ${money(item.paid)} already paid` : ''}</small></span></label>
+      <label class="check-row"><input type="checkbox" data-pay-pick ${pick && pick.on ? 'checked' : ''}><span><b>${escapeHtml(item.bill.name)}</b><small>${escapeHtml(envelope?.name || 'Money box removed')} · ${dueLabel(item.due)}${billPriorityLabel[item.bill.priority] ? ` · ${billPriorityLabel[item.bill.priority]}` : ''}${item.paid ? ` · ${money(item.paid)} already paid` : ''}</small></span></label>
       <input type="number" data-pay-amount min="1" max="${item.remaining}" step="1" value="${Number(value) || ''}" aria-label="How much to pay for ${escapeHtml(item.bill.name)}">
     </div>`;
   }).join('');
@@ -978,7 +1003,9 @@ function renderPaySummary(amount) {
     const coveredKeys = new Set(chosen.filter(entry => entry.pay >= entry.item.remaining).map(entry => entry.item.key));
     const waiting = unpaid.filter(item => isUrgentBill(item) && !coveredKeys.has(item.key)).length;
     summary.hidden = false;
+    const reserve = keepForLiving();
     summary.innerHTML = `You got <b>${money(amount)}</b> · pay first <b>${money(paying)}</b> · <b>${money(left)}</b> left for your boxes.`
+      + (reserve && left > 0 ? `<span class="reserve-note">Of that, <b>${money(Math.min(reserve, left))}</b> is your money for food and fuel in the days ahead. The app did not offer it to a debt.</span>` : '')
       + (waiting ? `<span class="still-waiting">${waiting} urgent ${waiting === 1 ? 'thing is' : 'things are'} still waiting after this. If you cannot pay someone this time, tell them before the date — people usually agree to wait when they hear it early.</span>` : '');
   }
 
@@ -1365,6 +1392,7 @@ function renderSettings() {
   </div>`).join('') || '<p class="small-note">Nothing tracked yet. Add one below.</p>';
   $('#debtTotalInput').value = state.settings.debtTotal;
   $('#focusTargetInput').value = state.settings.dailyFocusTarget;
+  $('#keepForLivingInput').value = state.settings.keepForLiving;
   $('#storageNote').textContent = state.updatedAt ? `Saved on this phone: ${new Date(state.updatedAt).toLocaleString()}` : 'No backup file saved yet.';
   applyTheme();
 }
@@ -1670,6 +1698,7 @@ function saveSettings(event) {
   state.settings.substances = readSubstanceInputs().filter(substance => substance.name);
   state.settings.debtTotal = Math.max(0, Math.round(Number($('#debtTotalInput').value || 0)));
   state.settings.dailyFocusTarget = Math.max(0, Math.round(Number($('#focusTargetInput').value || 0)));
+  state.settings.keepForLiving = Math.max(0, Math.round(Number($('#keepForLivingInput').value || 0)));
   saveState();
   renderAll();
   toast('Settings saved.');
@@ -1725,7 +1754,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.bills ||= []; state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';

@@ -542,7 +542,9 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .pay-summary { margin: 4px 0 0; font-size: .86rem; line-height: 1.5; color: var(--muted); }
 .pay-summary b { color: var(--text); }
 .pay-summary.over, .pay-summary.over b { color: var(--rescue-bg); }
-.still-waiting { display: block; margin-top: 6px; }
+.still-waiting, .reserve-note { display: block; margin-top: 6px; }
+.reserve-note { color: var(--green); }
+.reserve-note b { color: var(--green); }
 
 @media (max-width: 580px) {
   .bill-row { grid-template-columns: minmax(0, 1fr) auto; }

@@ -28,3 +28,15 @@ Automatic syncing would need a cloud account and a server. Do not put money or p
 ## A note
 
 This app is a help, not medical care. For smoking, weed or feeling very low, a doctor or a counsellor can do things an app cannot.
+
+## Checking nothing is broken
+
+The `tests` folder checks the app's logic without opening a browser. After changing anything, run:
+
+```
+node tests/test-bills.js
+node tests/test-reserve.js
+node tests/test-regression.js
+```
+
+Each one ends with `ALL ... PASS`. If it says `FAILED`, the line above it says what broke.
