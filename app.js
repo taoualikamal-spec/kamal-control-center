@@ -701,11 +701,6 @@ function setThemePreference(preference) {
   applyTheme();
 }
 
-function renderRule() {
-  const items = state.settings.envelopes.map(envelope => `<span class="rule-chip" style="border-color:${envelope.color}55"><b style="color:${envelope.color}">${envelope.percent}%</b>${escapeHtml(envelope.name)}</span>`).join('');
-  $('#ruleStrip').innerHTML = items;
-}
-
 function renderEnvelopes(dateKey = today()) {
   const metrics = envelopeMetrics(dateKey);
   $('#moneyEnvelopes').innerHTML = state.settings.envelopes.map(envelope => {
@@ -748,6 +743,20 @@ function renderDay() {
 
   renderHabits();
   renderFocusGoal();
+
+  // The folds show their numbers in the summary, so nothing has to be opened
+  // to know how the day went.
+  $('#numbersSummary').textContent = `${time.focus} min focus · ${time.stolen} min lost${ridden ? ` · waited ${ridden}` : ''}`;
+  const habits = state.settings.habits;
+  const weekTicked = weekDates().reduce((sum, date) => sum + habits.filter(habit => state.days[date]?.habits?.[habit.id]).length, 0);
+  $('#weekSummary').textContent = habits.length ? `${weekTicked} of ${weekDates().length * habits.length} ticked` : '';
+  const dayData = getDayData(selectedDate);
+  $('#notesSummary').textContent = (dayData.priority || dayData.reflection) ? 'written' : 'nothing yet';
+
+  // Explain how something works only until it has been used once.
+  const everTicked = Object.values(state.days).some(day => Object.values(day.habits || {}).some(Boolean));
+  $('#habitsHowTo').hidden = everTicked;
+  $('#weekHowTo').hidden = everTicked;
 
   const banner = $('#insightBanner');
   if (ridden) banner.textContent = `You waited ${ridden} ${ridden === 1 ? 'time' : 'times'} today. That is harder than a quiet day, and it counts more.`;
@@ -1018,6 +1027,7 @@ function renderPaySummary(amount) {
 function renderTransactions() {
   const entries = (currentTransactionFilter === 'month' ? entriesForMonth(state.transactions, firstOfMonth(selectedMonth)) : state.transactions).slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`));
   $('#clearMonthFilter').textContent = currentTransactionFilter === 'month' ? 'Show all' : 'This month';
+  $('#moneyLogSummary').textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}` : 'nothing yet';
   $('#transactionRows').innerHTML = entries.length ? entries.map(entry => {
     const isIncome = entry.type === 'income';
     const envelope = state.settings.envelopes.find(item => item.id === entry.envelopeId);
@@ -1070,6 +1080,7 @@ function renderWeeklyBars() {
 }
 
 function renderTimeRows() {
+  $('#timeLogSummary').textContent = state.timeEntries.length ? `${state.timeEntries.length} ${state.timeEntries.length === 1 ? 'entry' : 'entries'}` : 'nothing yet';
   const entries = state.timeEntries.slice().sort((a, b) => `${b.date}${b.createdAt || ''}`.localeCompare(`${a.date}${a.createdAt || ''}`)).slice(0, 25);
   $('#timeRows').innerHTML = entries.length ? entries.map(entry => `<tr><td>${dateLabel(entry.date)}</td><td><strong class="${entry.type === 'focus' ? 'positive' : 'drifted'}">${timeTypeLabel[entry.type] || 'Saved'}</strong></td><td>${escapeHtml(entry.category)}</td><td>${escapeHtml(entry.note || '—')}${entry.task ? ` <span class="task-tag">${escapeHtml(entry.task)}</span>` : ''}</td><td class="number">${entry.minutes} min</td><td class="row-actions"><button class="icon-action" data-edit-time="${entry.id}" title="Change this" aria-label="Change this">✎</button><button class="delete-button" data-delete-time="${entry.id}" title="Delete this" aria-label="Delete this">×</button></td></tr>`).join('') : '<tr><td colspan="6" class="empty-row">No time added yet. Use the timer, or add your best guess.</td></tr>';
 }
@@ -1154,6 +1165,9 @@ function renderBody() {
     }
   }
 
+  const picked = substanceById($('#cravingSubstance').value);
+  $('#surfPickSummary').textContent = `${picked ? picked.name.toLowerCase() : want} · ${String($('#cravingTrigger').value || '').toLowerCase()}`;
+
   // Level 1: hand back what they already told you, at the moment it is useful.
   const own = cravingInsights();
   $('#lastPlan').hidden = !own.lastPlan;
@@ -1189,6 +1203,7 @@ function renderBody() {
     <article class="metric-card"><span>Money saved</span><strong>${money(stats.recoveredAll)}</strong><small>${money(stats.recoveredMonth)} this month</small></article>
     <article class="metric-card"><span>Most common reason</span><strong>${stats.topTrigger ? escapeHtml(stats.topTrigger) : '—'}</strong><small>${stats.topTrigger ? `${stats.topTriggerCount} times this week` : 'Add a few and the pattern will show.'}</small></article>`;
 
+  $('#cravingLogSummary').textContent = state.cravings.length ? `${state.cravings.length} ${state.cravings.length === 1 ? 'time' : 'times'}` : 'nothing yet';
   const entries = state.cravings.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 25);
   const outcomeLabel = { rode: 'Waited', less: 'Used less', used: 'Used' };
   $('#cravingRows').innerHTML = entries.length ? entries.map(entry => `<tr>
@@ -1399,7 +1414,6 @@ function renderSettings() {
 
 function renderAll() {
   renderHeader();
-  renderRule();
   renderDay();
   renderMonth();
   renderYear();
@@ -1787,7 +1801,16 @@ function selectTab(tab) {
 
 function registerEvents() {
   $$('.nav-item').forEach(button => button.addEventListener('click', () => selectTab(button.dataset.tab)));
-  $$('[data-open-tab]').forEach(button => button.addEventListener('click', () => selectTab(button.dataset.openTab)));
+  $$('[data-open-tab]').forEach(button => button.addEventListener('click', () => {
+    selectTab(button.dataset.openTab);
+    if (!button.dataset.focus) return;
+    const target = $(button.dataset.focus);
+    if (!target) return;
+    setTimeout(() => {
+      target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      if (typeof target.focus === 'function') target.focus({ preventScroll: true });
+    }, 80);
+  }));
   $('#incomeForm').addEventListener('submit', addIncome);
   $('#expenseForm').addEventListener('submit', addExpense);
   $('#timeForm').addEventListener('submit', addTimeEntry);

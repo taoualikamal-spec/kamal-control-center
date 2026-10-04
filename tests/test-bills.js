@@ -172,7 +172,7 @@ function receive(h, amount, source = 'Client') {
   const seed = {
     version: 1,
     settings: { envelopes: [{ id: 'family', name: 'Family & home', percent: 60, target: 0, color: '#69a9ff' }, { id: 'personal', name: 'Myself', percent: 20, target: 0, color: '#ba9aff' }, { id: 'debt', name: 'Money I owe', percent: 15, target: 0, color: '#ff9b70' }, { id: 'emergency', name: 'Just in case', percent: 5, target: 0, color: '#53d6ad' }], habits: [], substances: [], debtTotal: 45000, dailyFocusTarget: 120 },
-    transactions: [{ id: 'old', type: 'income', amount: 1000, date: '2026-09-01', source: 'Old', note: '', allocations: { family: 600, personal: 200, debt: 150, emergency: 50 } }],
+    transactions: [{ id: 'old', type: 'income', amount: 1000, date: new Date().toISOString().slice(0, 8) + '01', source: 'Old', note: '', allocations: { family: 600, personal: 200, debt: 150, emergency: 50 } }],
     timeEntries: [], cravings: [], days: {}, activeTimer: null
   };
   const h = load(seed);
