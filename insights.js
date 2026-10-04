@@ -28,6 +28,22 @@
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }
 
+  const clockMinutes = time => {
+    const [hours, mins] = String(time || '').split(':').map(Number);
+    return Number.isFinite(hours) && Number.isFinite(mins) ? hours * 60 + mins : null;
+  };
+  const clockText = total => {
+    const wrapped = ((Math.round(total) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+  };
+  const hoursText = minutes => `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+  function sleepLength(sleep) {
+    const start = clockMinutes(sleep && sleep.toBed);
+    const end = clockMinutes(sleep && sleep.wokeAt);
+    if (start === null || end === null) return 0;
+    return (end <= start ? end + 1440 : end) - start;
+  }
+
   function timeOfDayBand(iso) {
     const hour = new Date(iso).getHours();
     if (hour < 6) return 'late at night';
@@ -157,9 +173,61 @@
     return out;
   }
 
+  /* Sleep. The split is this person's OWN median night, never an outside
+     "you should sleep 8 hours" — the question is what a longer night does
+     for THEM, which is a question their own data can actually answer. */
+  function sleepFindings(state) {
+    const days = state.days || {};
+    const out = [];
+    const nights = Object.keys(days)
+      .map(date => ({ date, sleep: days[date].sleep }))
+      .filter(item => item.sleep && item.sleep.toBed && item.sleep.wokeAt)
+      .map(item => ({ date: item.date, minutes: sleepLength(item.sleep), wake: clockMinutes(item.sleep.wokeAt) }))
+      .filter(item => item.minutes > 0);
+
+    if (!nights.length) return out;
+
+    const mean = list => (list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : 0);
+    const averageWake = mean(nights.map(item => item.wake));
+    const spread = Math.round(mean(nights.map(item => Math.abs(item.wake - averageWake))));
+
+    out.push(finding('sleep-average', 'sleep',
+      `You sleep about <b>${hoursText(Math.round(mean(nights.map(item => item.minutes))))}</b> a night.`,
+      nights.length, MIN));
+    out.push(finding('sleep-steady', 'sleep',
+      `You wake around <b>${clockText(averageWake)}</b>, give or take ${spread} minutes.`,
+      nights.length, MIN));
+
+    const sorted = nights.map(item => item.minutes).slice().sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const longer = nights.filter(item => item.minutes >= median).map(item => item.date);
+    const shorter = nights.filter(item => item.minutes < median).map(item => item.date);
+
+    const focusOn = dates => {
+      const set = new Set(dates);
+      return (state.timeEntries || []).filter(entry => entry.type === 'focus' && set.has(entry.date))
+        .reduce((sum, entry) => sum + Number(entry.minutes), 0) / Math.max(1, dates.length);
+    };
+    const waitedOn = dates => {
+      const set = new Set(dates);
+      return (state.cravings || []).filter(entry => entry.outcome === 'rode' && set.has(entry.date)).length / Math.max(1, dates.length);
+    };
+
+    if (longer.length && shorter.length) {
+      const pair = Math.min(longer.length, shorter.length);
+      out.push(finding('sleep-focus', 'sleep',
+        `After your longer nights you focused about <b>${Math.round(focusOn(longer))} min</b> the next day. After the shorter ones, about ${Math.round(focusOn(shorter))} min.`,
+        pair, MIN_GROUP));
+      out.push(finding('sleep-urges', 'sleep',
+        `After your longer nights you waited out <b>${waitedOn(longer).toFixed(1)}</b> wants a day. After the shorter ones, ${waitedOn(shorter).toFixed(1)}.`,
+        pair, MIN_GROUP));
+    }
+    return out;
+  }
+
   function compute(state) {
     const dismissed = state.dismissedInsights || [];
-    return [].concat(urgeFindings(state), timeFindings(state))
+    return [].concat(urgeFindings(state), timeFindings(state), sleepFindings(state))
       .filter(item => dismissed.indexOf(item.id) === -1);
   }
 
@@ -169,7 +237,7 @@
 
   global.Insights = {
     compute, forArea, personalWaitSeconds, rankedOptions, mostLikely,
-    timeOfDayBand, countBy,
+    timeOfDayBand, countBy, sleepLength,
     thresholds: { MIN, MIN_GROUP, MIN_FOCUS_ENTRIES }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

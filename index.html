@@ -53,6 +53,13 @@
 
         <section class="today-list" aria-labelledby="todayListTitle">
           <div class="list-head"><h2 id="todayListTitle">Today</h2><span class="date-chip" id="scorecardDate"></span></div>
+          <div class="sleep-row">
+            <div class="sleep-fields">
+              <label for="sleepToBed">To bed<input type="time" id="sleepToBed"></label>
+              <label for="sleepWokeAt">Woke up<input type="time" id="sleepWokeAt"></label>
+            </div>
+            <p class="sleep-readout" id="sleepReadout"></p>
+          </div>
           <p class="how-to" id="habitsHowTo" hidden>Tick a box when you have done it. Nothing is scored, and nothing is lost if you miss one.</p>
           <div class="habit-list" id="habitList"></div>
           <div class="task-block">
@@ -74,6 +81,15 @@
               <article class="metric-card"><span>Lost time</span><strong id="stolenToday">0 min</strong><small id="stolenDetail">Just notice it. No blame.</small></article>
               <article class="metric-card"><span>Times you waited</span><strong id="urgesToday">0</strong><small id="urgesDetail">Every one you write down helps.</small></article>
             </div>
+          </div>
+        </details>
+
+        <details class="fold">
+          <summary><span>Sleep</span><small id="sleepSummary"></small></summary>
+          <div class="fold-body">
+            <div class="time-score-grid" id="sleepStats"></div>
+            <div id="sleepFindings"></div>
+            <p class="small-note">A steady waking time is the part that pulls the rest into line — more than the number of hours. If you stop weed, sleep gets worse for a few weeks before it gets better. That is the withdrawal doing what it does, not proof that you need it.</p>
           </div>
         </details>
 
@@ -395,6 +411,7 @@
               <div id="substanceSettings"></div>
               <button class="secondary-button full-width" id="addSubstanceButton" type="button">+ Add one</button>
               <label>Focus goal each day (minutes)<input id="focusTargetInput" type="number" min="0" step="5" placeholder="120"></label>
+              <label>What time do you want to wake up?<input id="wakeTargetInput" type="time"></label>
               <label>Keep for food and fuel (MAD)<input id="keepForLivingInput" type="number" min="0" step="50" placeholder="0"></label>
               <p class="small-note">Each time money comes in, the app keeps this much back before it suggests paying money you owe. It is for the food and fuel of the days ahead, which are not on your bills list. Put 0 if you do not want this.</p>
               <label>How much money do you owe? (MAD)<input id="debtTotalInput" type="number" min="0" step="1"></label>

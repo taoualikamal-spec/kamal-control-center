@@ -54,7 +54,7 @@ const envelopePalette = ['#69a9ff', '#ba9aff', '#ff9b70', '#53d6ad', '#f7c968', 
 function defaultState() {
   return {
     version: 1,
-    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), substances: structuredClone(defaultSubstances), debtTotal: 45000, dailyFocusTarget: 120, keepForLiving: 0 },
+    settings: { envelopes: structuredClone(defaultEnvelopes), habits: structuredClone(defaultHabits), substances: structuredClone(defaultSubstances), debtTotal: 45000, dailyFocusTarget: 120, keepForLiving: 0, wakeTarget: '' },
     transactions: [],
     timeEntries: [],
     cravings: [],
@@ -111,6 +111,7 @@ function normalizeSettings(settings) {
   settings.debtTotal = Number(settings.debtTotal ?? 45000);
   settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
   settings.keepForLiving = Math.max(0, Number(settings.keepForLiving ?? 0));
+  settings.wakeTarget = String(settings.wakeTarget || '');
   upgradeWording(settings);
   return settings;
 }
@@ -177,6 +178,57 @@ function getDayData(date = today()) {
 }
 
 const MAX_TASKS = 3;
+
+/* ---------- Sleep ----------
+   A night belongs to the morning you woke up, so the day's sleep sits with
+   the day it powers. Waking time matters more than hours here: a steady wake
+   time is what pulls everything else into line. */
+const minutesOfDay = time => {
+  const [hours, mins] = String(time || '').split(':').map(Number);
+  return Number.isFinite(hours) && Number.isFinite(mins) ? hours * 60 + mins : null;
+};
+const clockFromMinutes = total => {
+  const wrapped = ((Math.round(total) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+};
+const formatSleep = minutes => `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+
+function sleepMinutes(sleep) {
+  const start = minutesOfDay(sleep && sleep.toBed);
+  const end = minutesOfDay(sleep && sleep.wokeAt);
+  if (start === null || end === null) return 0;
+  return (end <= start ? end + 1440 : end) - start;
+}
+
+function setSleep(field, value) {
+  const day = getDayData(selectedDate);
+  day.sleep = { ...(day.sleep || {}), [field]: value };
+  if (!day.sleep.toBed && !day.sleep.wokeAt) delete day.sleep;
+  saveState();
+  renderDay();
+}
+
+function sleepNights(dayCount = 30) {
+  return lastDates(dayCount)
+    .map(date => ({ date, sleep: state.days[date] && state.days[date].sleep }))
+    .filter(item => item.sleep && item.sleep.toBed && item.sleep.wokeAt);
+}
+
+function sleepStats(dayCount = 30) {
+  const nights = sleepNights(dayCount);
+  if (!nights.length) return { nights: 0 };
+  const durations = nights.map(item => sleepMinutes(item.sleep));
+  const wakes = nights.map(item => minutesOfDay(item.sleep.wokeAt));
+  const mean = list => list.reduce((sum, value) => sum + value, 0) / list.length;
+  const averageWake = mean(wakes);
+  return {
+    nights: nights.length,
+    averageMinutes: Math.round(mean(durations)),
+    averageWake: clockFromMinutes(averageWake),
+    // How much the wake time moves around, which is the part that matters.
+    wakeSpread: Math.round(mean(wakes.map(value => Math.abs(value - averageWake))))
+  };
+}
 
 // Days hold small actions, months hold big ones, years hold the whole view.
 const yearKey = (date = today()) => String(date).slice(0, 4);
@@ -743,6 +795,7 @@ function renderDay() {
 
   renderHabits();
   renderFocusGoal();
+  renderSleep();
 
   // The folds show their numbers in the summary, so nothing has to be opened
   // to know how the day went.
@@ -1125,6 +1178,30 @@ function renderTimer() {
   }
 }
 
+function renderSleep() {
+  const sleep = getDayData(selectedDate).sleep || {};
+  $('#sleepToBed').value = sleep.toBed || '';
+  $('#sleepWokeAt').value = sleep.wokeAt || '';
+
+  const minutes = sleepMinutes(sleep);
+  const target = state.settings.wakeTarget;
+  $('#sleepReadout').textContent = minutes
+    ? `${formatSleep(minutes)} asleep${target ? ` · you want to wake at ${target}` : ''}`
+    : 'Add last night and the app can show you what it changes.';
+
+  const stats = sleepStats();
+  $('#sleepSummary').textContent = stats.nights
+    ? `${formatSleep(stats.averageMinutes)} · wakes around ${stats.averageWake}`
+    : 'nothing yet';
+  $('#sleepStats').innerHTML = stats.nights ? `
+    <article class="metric-card"><span>A night, on average</span><strong>${formatSleep(stats.averageMinutes)}</strong><small>over ${stats.nights} ${stats.nights === 1 ? 'night' : 'nights'}</small></article>
+    <article class="metric-card"><span>You wake around</span><strong>${stats.averageWake}</strong><small>${target ? `you want ${target}` : 'set a wake time in Settings'}</small></article>
+    <article class="metric-card"><span>Give or take</span><strong>${stats.wakeSpread} min</strong><small>how much your waking moves</small></article>` : '';
+
+  renderFindingsInto('#sleepFindings', 'sleep',
+    'Once there are a few nights here, this will show what your sleep changes — how much you focus the next day, and how the wanting goes.');
+}
+
 function renderBody() {
   const surf = state.activeSurf;
   const stats = cravingStats();
@@ -1408,6 +1485,7 @@ function renderSettings() {
   $('#debtTotalInput').value = state.settings.debtTotal;
   $('#focusTargetInput').value = state.settings.dailyFocusTarget;
   $('#keepForLivingInput').value = state.settings.keepForLiving;
+  $('#wakeTargetInput').value = state.settings.wakeTarget;
   $('#storageNote').textContent = state.updatedAt ? `Saved on this phone: ${new Date(state.updatedAt).toLocaleString()}` : 'No backup file saved yet.';
   applyTheme();
 }
@@ -1713,6 +1791,7 @@ function saveSettings(event) {
   state.settings.debtTotal = Math.max(0, Math.round(Number($('#debtTotalInput').value || 0)));
   state.settings.dailyFocusTarget = Math.max(0, Math.round(Number($('#focusTargetInput').value || 0)));
   state.settings.keepForLiving = Math.max(0, Math.round(Number($('#keepForLivingInput').value || 0)));
+  state.settings.wakeTarget = $('#wakeTargetInput').value || '';
   saveState();
   renderAll();
   toast('Settings saved.');

@@ -38,6 +38,7 @@ node tests/test-bills.js
 node tests/test-reserve.js
 node tests/test-regression.js
 node tests/test-navigation.js
+node tests/test-sleep.js
 ```
 
 Each one ends with `ALL ... PASS`. If it says `FAILED`, the line above it says what broke.

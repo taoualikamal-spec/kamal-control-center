@@ -590,3 +590,10 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 /* Back row on pages opened from Day — first thing on the page, phone-sized. */
 .back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 12px 6px 8px; margin: 2px 0 6px -8px; border: 0; background: transparent; color: var(--blue); font-size: .88rem; font-weight: 700; border-radius: 9px; }
 .back-link:hover { background: var(--surface-3); }
+
+/* Last night, logged in two taps at the top of the day. */
+.sleep-row { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
+.sleep-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 1 1 220px; }
+.sleep-fields label { font-size: .74rem; color: var(--muted); font-weight: 700; }
+.sleep-fields input { margin-top: 5px; min-height: 42px; }
+.sleep-readout { flex: 1 1 180px; margin: 0; font-size: .82rem; color: var(--muted); }
