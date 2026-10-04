@@ -586,3 +586,7 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 
 @media (max-width: 420px) { .qa { min-height: 64px; padding: 11px 12px; } .qa b { font-size: .9rem; } }
 @media (prefers-reduced-motion: reduce) { .qa:hover { transform: none; } }
+
+/* Back row on pages opened from Day — first thing on the page, phone-sized. */
+.back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 12px 6px 8px; margin: 2px 0 6px -8px; border: 0; background: transparent; color: var(--blue); font-size: .88rem; font-weight: 700; border-radius: 9px; }
+.back-link:hover { background: var(--surface-3); }

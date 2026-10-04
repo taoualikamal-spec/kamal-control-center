@@ -27,7 +27,11 @@ function load(seed) {
   const getEl = sel => { if (!elems.has(sel)) elems.set(sel, makeEl()); return elems.get(sel); };
   // Real page elements, so tests can see which page selectTab actually shows.
   const pages = ['day', 'month', 'year', 'time', 'body', 'settings'].map(id => Object.assign(makeEl(), { id }));
-  const queryAll = sel => (sel === '.page' ? pages : []);
+  // Real nav items too, so tests can see which tab is lit.
+  const navItems = ['day', 'month', 'year', 'settings'].map(tab => {
+    const el = makeEl(); el.dataset.tab = tab; return el;
+  });
+  const queryAll = sel => (sel === '.page' ? pages : sel === '.nav-item' ? navItems : []);
   const ctx = {
     console, Intl, Date, Math, JSON, structuredClone, Array, Object, String, Number, Boolean, Set, Map,
     setInterval: () => 0, setTimeout: () => 0, clearTimeout: () => 0,
@@ -48,7 +52,8 @@ function load(seed) {
   vm.createContext(ctx);
   vm.runInContext(code, ctx);
   const activePages = () => pages.filter(page => page.classList.contains('active')).map(page => page.id);
-  return { ctx, getEl, api: ctx.__api, store, activePages };
+  const litTab = () => (navItems.find(item => item.classList.contains('active')) || {}).dataset?.tab || '';
+  return { ctx, getEl, api: ctx.__api, store, activePages, litTab };
 }
 
 function reporter() {

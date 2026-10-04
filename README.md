@@ -37,6 +37,7 @@ The `tests` folder checks the app's logic without opening a browser. After chang
 node tests/test-bills.js
 node tests/test-reserve.js
 node tests/test-regression.js
+node tests/test-navigation.js
 ```
 
 Each one ends with `ALL ... PASS`. If it says `FAILED`, the line above it says what broke.

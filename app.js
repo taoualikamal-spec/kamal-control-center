@@ -1793,14 +1793,56 @@ function deleteCraving(id) {
   saveState(); renderAll(); toast('Entry deleted.');
 }
 
-function selectTab(tab) {
+/* ---------- Navigation ----------
+   Every move is a real history entry, so the phone's back button goes back
+   through the app instead of leaving it. The address also names the page,
+   so a refresh stays put. */
+const TABS = ['day', 'month', 'year', 'time', 'body', 'settings'];
+// Time and Waiting are opened from Day and are not their own tab, so the
+// Day tab stays lit while you are inside them.
+const TAB_PARENT = { time: 'day', body: 'day' };
+const scrollMemory = {};
+
+function tabFromHash() {
+  const name = String(location.hash || '').replace('#', '');
+  return TABS.includes(name) ? name : 'day';
+}
+
+function activeTab() {
+  const page = $$('.page').find(item => item.classList.contains('active'));
+  return page ? page.id : '';
+}
+
+// Shows a page. Reached both from a tap and from the back button, so both
+// always end up in the same state.
+/* Idempotent on purpose: a move sets the address AND shows the page, and the
+   address change then calls this again. Doing the work twice would throw away
+   the scroll position it just restored. */
+function showTab(tab) {
+  if (!TABS.includes(tab)) tab = 'day';
+  const previous = activeTab();
+  if (previous === tab) return;
+  if (previous) scrollMemory[previous] = window.scrollY || 0;
   $$('.page').forEach(page => page.classList.toggle('active', page.id === tab));
-  $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.tab === tab));
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const lit = TAB_PARENT[tab] || tab;
+  $$('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.tab === lit));
+  window.scrollTo({ top: scrollMemory[tab] || 0, behavior: 'auto' });
+}
+
+function selectTab(tab) {
+  if (!TABS.includes(tab)) tab = 'day';
+  if (tabFromHash() !== tab) location.hash = tab;
+  showTab(tab);
+}
+
+// Tapping the tab you are already on takes you back to the top of it.
+function openTab(tab) {
+  if (activeTab() === tab) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+  selectTab(tab);
 }
 
 function registerEvents() {
-  $$('.nav-item').forEach(button => button.addEventListener('click', () => selectTab(button.dataset.tab)));
+  $$('.nav-item').forEach(button => button.addEventListener('click', () => openTab(button.dataset.tab)));
   $$('[data-open-tab]').forEach(button => button.addEventListener('click', () => {
     selectTab(button.dataset.openTab);
     if (!button.dataset.focus) return;
@@ -1911,6 +1953,7 @@ function registerEvents() {
   $('#installButton').addEventListener('click', async () => { if (!installEvent) return; installEvent.prompt(); await installEvent.userChoice; installEvent = null; $('#installButton').hidden = true; });
   $('#themeButton').addEventListener('click', () => setThemePreference(resolvedTheme() === 'dark' ? 'light' : 'dark'));
   prefersDark?.addEventListener?.('change', () => { if (themePreference === 'system') applyTheme(); });
+  window.addEventListener('hashchange', () => showTab(tabFromHash()));
 }
 
 function registerPWA() {
@@ -1923,6 +1966,7 @@ registerEvents();
 applyTheme();
 rolloverTasks();
 renderAll();
+showTab(tabFromHash());
 updateTimerTaskVisibility();
 renderTimer();
 setInterval(tickTimer, 1000);
