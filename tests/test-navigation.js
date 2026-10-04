@@ -100,4 +100,26 @@ function browser(h) {
   check('tapping the tab you are on goes to the top', landedAt === 0);
 }
 
+// The markup itself: pages that are not in the bottom bar must carry a way
+// out. A silent find-and-replace once removed these without anyone noticing.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const section = id => {
+    const start = html.indexOf('<section id="' + id + '" class="page');
+    const end = html.indexOf('<section id="', start + 10);
+    return html.slice(start, end === -1 ? undefined : end);
+  };
+  const inBar = ['day', 'month', 'year', 'settings'];
+  ['time', 'body'].forEach(id => {
+    check('the ' + id + ' page has a way back to Day', section(id).includes('data-open-tab="day"'));
+  });
+  inBar.forEach(id => {
+    check('the ' + id + ' tab is in the bottom bar', html.includes('data-tab="' + id + '"'));
+  });
+  const bar = html.slice(html.indexOf('<nav class="bottom-nav"'));
+  check('the bottom bar stays at four tabs or fewer', (bar.match(/class="nav-item/g) || []).length <= 5);
+}
+
 done();
