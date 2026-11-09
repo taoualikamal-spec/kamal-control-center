@@ -59,6 +59,7 @@ function defaultState() {
     timeEntries: [],
     cravings: [],
     bills: [],
+    payback: [],
     days: {},
     months: {},
     years: {},
@@ -125,6 +126,7 @@ function loadState() {
     stored.timeEntries ||= [];
     stored.cravings ||= [];
     stored.bills = normalizeBills(stored.bills);
+    stored.payback = normalizePayback(stored.payback);
     stored.days ||= {};
     stored.dismissedInsights ||= [];
     stored.months ||= {};
@@ -594,6 +596,165 @@ function normalizeBills(bills) {
   }));
 }
 const sumAmounts = list => list.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+
+/* ---------- Pay back in order ----------
+   The people you owe, in the order you chose to pay them (smallest first is the
+   usual way: each one you finish is one less person waiting). Names live only
+   in this phone's storage, never in the code. Ticking one is not a test you can
+   fail: you can untick it, and nothing resets. "Own plan" items, like a
+   business with a contract, are paid on their own schedule beside the list. */
+// Runs while the saved state loads, before makeId exists, so it makes its own ids.
+function paybackId() {
+  return `pb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizePayback(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(item => item && String(item.name || '').trim())
+    .map(item => ({
+      id: item.id || paybackId(),
+      name: String(item.name).trim(),
+      amount: Math.max(0, Math.round(Number(item.amount || 0))),
+      separate: Boolean(item.separate),
+      paidOn: item.paidOn || null
+    }));
+}
+
+// "Amine 300", "Karim Bennani: 1,000 dh", "Car agency 3400 own plan" -> items.
+function parsePaybackLines(text) {
+  return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+    const separate = /\b(own plan|separate)\b/i.test(line);
+    const clean = line.replace(/\b(own plan|separate)\b/ig, '').replace(/\(.*?\)/g, ' ');
+    const match = clean.match(/^(.*?)[\s:=-]*([\d][\d\s.,]*)\s*(dh|mad|dirhams?)?\s*$/i);
+    if (!match) return null;
+    const name = match[1].replace(/[\s:=-]+$/, '').trim();
+    const amount = Math.round(Number(match[2].replace(/[\s.,]/g, '')));
+    return name && amount > 0 ? { name, amount, separate } : null;
+  }).filter(Boolean);
+}
+
+function paybackSummary(list = state.payback) {
+  const inOrder = list.filter(item => !item.separate);
+  const separate = list.filter(item => item.separate);
+  const paid = list.filter(item => item.paidOn);
+  const total = sumAmounts(list);
+  const paidAmount = sumAmounts(paid);
+  return {
+    inOrder, separate,
+    people: list.length,
+    paidCount: paid.length,
+    total, paidAmount,
+    left: total - paidAmount,
+    next: inOrder.find(item => !item.paidOn) || null
+  };
+}
+
+function addPaybackItems(items) {
+  const known = new Set(state.payback.map(item => item.name.toLowerCase()));
+  const fresh = normalizePayback(items).filter(item => !known.has(item.name.toLowerCase()));
+  state.payback.push(...fresh);
+  return fresh.length;
+}
+
+function setPaybackPaid(id, paid, date = today()) {
+  const item = state.payback.find(entry => entry.id === id);
+  if (!item) return null;
+  item.paidOn = paid ? date : null;
+  return item;
+}
+
+function movePayback(id, step) {
+  const from = state.payback.findIndex(entry => entry.id === id);
+  const to = from + step;
+  if (from < 0 || to < 0 || to >= state.payback.length) return false;
+  [state.payback[from], state.payback[to]] = [state.payback[to], state.payback[from]];
+  return true;
+}
+
+function removePayback(id) {
+  const before = state.payback.length;
+  state.payback = state.payback.filter(entry => entry.id !== id);
+  return state.payback.length < before;
+}
+
+function paybackRow(item, number, runningTotal) {
+  const done = Boolean(item.paidOn);
+  return `<div class="payback-row ${done ? 'done' : ''}" data-payback-row="${item.id}">
+    <label class="payback-check">
+      <input type="checkbox" data-payback-toggle="${item.id}" ${done ? 'checked' : ''} aria-label="Paid ${escapeHtml(item.name)}">
+      <span class="payback-number">${number ?? '·'}</span>
+      <span class="payback-main"><b>${escapeHtml(item.name)}</b><small>${done ? `Paid on ${dateLabel(item.paidOn)}` : runningTotal !== undefined ? `After this one: ${money(runningTotal)} paid` : 'Paid on its own plan'}</small></span>
+      <span class="payback-amount">${money(item.amount)}</span>
+    </label>
+    <span class="payback-tools">
+      <button class="icon-button" type="button" data-payback-move="${item.id}" data-step="-1" aria-label="Move ${escapeHtml(item.name)} up" title="Move up">↑</button>
+      <button class="icon-button" type="button" data-payback-move="${item.id}" data-step="1" aria-label="Move ${escapeHtml(item.name)} down" title="Move down">↓</button>
+      <button class="delete-button" type="button" data-payback-delete="${item.id}" aria-label="Remove ${escapeHtml(item.name)}" title="Remove">×</button>
+    </span>
+  </div>`;
+}
+
+function renderPayback() {
+  if (!$('#paybackList')) return;
+  const s = paybackSummary();
+  $('#paybackPeople').textContent = `${s.paidCount} of ${s.people}`;
+  $('#paybackPeopleDetail').textContent = s.people ? `${s.people - s.paidCount} still waiting` : 'Add the people you owe below.';
+  $('#paybackLeft').textContent = money(s.left);
+  $('#paybackLeftDetail').textContent = s.people ? `${money(s.paidAmount)} paid back, of ${money(s.total)}` : 'Nothing added yet.';
+  $('#paybackNext').innerHTML = s.next
+    ? `Next: <b>${escapeHtml(s.next.name)}</b> — ${money(s.next.amount)}`
+    : s.inOrder.length ? 'Everyone on the list is paid. Well done.' : '';
+  let running = 0;
+  $('#paybackList').innerHTML = s.inOrder.map((item, index) => {
+    running += item.amount;
+    return paybackRow(item, index + 1, running);
+  }).join('') || '<p class="small-note">No one on the list yet.</p>';
+  $('#paybackSeparateWrap').hidden = !s.separate.length;
+  $('#paybackSeparate').innerHTML = s.separate.map(item => paybackRow(item, null)).join('');
+  const entry = $('#paybackEntrySummary');
+  if (entry) entry.textContent = s.people ? `${s.paidCount} of ${s.people} paid · ${money(s.left)} left${s.next ? ` · next: ${s.next.name}` : ''}` : 'Your debts, one by one, smallest first.';
+}
+
+function handlePaybackClick(event) {
+  const move = event.target.closest('[data-payback-move]');
+  const remove = event.target.closest('[data-payback-delete]');
+  if (move) { if (movePayback(move.dataset.paybackMove, Number(move.dataset.step))) { saveState(); renderPayback(); } return; }
+  if (remove) {
+    const item = state.payback.find(entry => entry.id === remove.dataset.paybackDelete);
+    if (!item || !confirm(`Remove ${item.name} from the list?`)) return;
+    removePayback(item.id); saveState(); renderPayback();
+  }
+}
+
+function handlePaybackToggle(event) {
+  const box = event.target.closest('[data-payback-toggle]');
+  if (!box) return;
+  const item = setPaybackPaid(box.dataset.paybackToggle, box.checked);
+  if (!item) return;
+  saveState(); renderPayback();
+  toast(item.paidOn ? `${item.name} — paid. One less person waiting.` : `${item.name} is back on the list.`);
+}
+
+function addPaybackFromForm(event) {
+  event.preventDefault();
+  const name = $('#paybackName').value.trim();
+  const amount = Math.round(Number($('#paybackAmount').value));
+  if (!name || !amount || amount < 1) return;
+  const added = addPaybackItems([{ name, amount, separate: $('#paybackSeparateInput').checked }]);
+  if (!added) { toast(`${name} is already on the list.`); return; }
+  event.target.reset();
+  saveState(); renderPayback(); toast(`${name} added.`);
+}
+
+function addPaybackFromPaste(event) {
+  event.preventDefault();
+  const items = parsePaybackLines($('#paybackPaste').value);
+  if (!items.length) { toast('No lines like "Name 300" found.'); return; }
+  const added = addPaybackItems(items);
+  $('#paybackPaste').value = '';
+  saveState(); renderPayback();
+  toast(added ? `${added} added to the list.` : 'They are all on the list already.');
+}
 
 function daysInMonth(key) {
   const [year, month] = key.split('-').map(Number);
@@ -1501,6 +1662,7 @@ function renderAll() {
   updateTimerTaskOptions();
   renderTime();
   renderBody();
+  renderPayback();
   renderSettings();
 }
 
@@ -1847,7 +2009,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.payback = normalizePayback(state.payback); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';
@@ -1876,10 +2038,10 @@ function deleteCraving(id) {
    Every move is a real history entry, so the phone's back button goes back
    through the app instead of leaving it. The address also names the page,
    so a refresh stays put. */
-const TABS = ['day', 'month', 'year', 'time', 'body', 'settings'];
-// Time and Waiting are opened from Day and are not their own tab, so the
-// Day tab stays lit while you are inside them.
-const TAB_PARENT = { time: 'day', body: 'day' };
+const TABS = ['day', 'month', 'year', 'time', 'body', 'payback', 'settings'];
+// Time and Waiting are opened from Day, and Pay back from Month. None is its
+// own tab, so the tab they came from stays lit while you are inside them.
+const TAB_PARENT = { time: 'day', body: 'day', payback: 'month' };
 const scrollMemory = {};
 
 function tabFromHash() {
@@ -1947,6 +2109,16 @@ function registerEvents() {
   });
   $('#stopTimerButton').addEventListener('click', () => finishActiveTimer(false));
   $('#dayTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#dayTaskInput').value); $('#dayTaskInput').value = ''; });
+  $('#paybackEditButton').addEventListener('click', () => {
+    const editing = $('#paybackPanel').classList.toggle('editing');
+    $('#paybackEditButton').textContent = editing ? 'Done' : 'Change the order';
+  });
+  $('#paybackForm').addEventListener('submit', addPaybackFromForm);
+  $('#paybackPasteForm').addEventListener('submit', addPaybackFromPaste);
+  ['#paybackList', '#paybackSeparate'].forEach(selector => {
+    $(selector).addEventListener('click', handlePaybackClick);
+    $(selector).addEventListener('change', handlePaybackToggle);
+  });
   $('#settingsForm').addEventListener('submit', saveSettings);
   $('#exportButton').addEventListener('click', exportData);
   $('#quickBackupButton').addEventListener('click', exportData);

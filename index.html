@@ -132,6 +132,11 @@
           <article class="metric-card"><span>Money saved</span><strong id="monthKept">0 MAD</strong><small id="monthKeptDetail">From the times you waited.</small></article>
         </section>
 
+        <button class="panel payback-entry" type="button" data-open-tab="payback">
+          <span><span class="eyebrow">Pay back, in order</span><b>The people I owe</b><small id="paybackEntrySummary">Your debts, one by one, smallest first.</small></span>
+          <span class="payback-entry-arrow" aria-hidden="true">&rarr;</span>
+        </button>
+
         <section class="panel big-move-panel">
           <div class="panel-heading"><div><p class="eyebrow">One big thing</p><h2>The big thing this month</h2></div></div>
           <label class="priority-input">What would make this month a good one?<input id="bigMoveInput" maxlength="180" placeholder="One thing. Not a list."></label>
@@ -391,6 +396,50 @@
             <div class="table-wrap"><table><thead><tr><th>Day</th><th>What</th><th>Why</th><th>What happened</th><th class="number">Waited</th><th></th></tr></thead><tbody id="cravingRows"></tbody></table></div>
           </div>
         </details>
+      </section>
+
+      <!-- ============ PAY BACK ============ -->
+      <section id="payback" class="page" aria-labelledby="paybackTitle">
+        <button class="back-link" type="button" data-open-tab="month">&larr; Month</button>
+        <div class="page-heading"><div><p class="eyebrow">Pay back, in order</p><h1 id="paybackTitle">One person at a time</h1><p class="lede">Pay the smallest first. Each tick is one less person waiting for you.</p></div></div>
+
+        <section class="metric-grid payback-metrics" aria-label="Paying back">
+          <article class="metric-card"><span>People paid</span><strong id="paybackPeople">0 of 0</strong><small id="paybackPeopleDetail">Add the people you owe below.</small></article>
+          <article class="metric-card"><span>Still to pay</span><strong id="paybackLeft">0 MAD</strong><small id="paybackLeftDetail">Nothing added yet.</small></article>
+        </section>
+
+        <section class="panel payback-panel" id="paybackPanel">
+          <div class="payback-panel-top"><p class="payback-next" id="paybackNext"></p><button class="text-button" id="paybackEditButton" type="button">Change the order</button></div>
+          <div class="payback-list" id="paybackList"></div>
+          <div id="paybackSeparateWrap" hidden>
+            <p class="settings-group-title">Paid on its own plan</p>
+            <p class="small-note payback-tight">Paid beside the list, on the dates you agreed, not in the order above.</p>
+            <div class="payback-list" id="paybackSeparate"></div>
+          </div>
+          <p class="small-note">Tick a name when you have paid it all. Paid by mistake? Untick it. Nothing resets.</p>
+        </section>
+
+        <section class="panel form-panel">
+          <details class="bills-details">
+            <summary>+ Add someone</summary>
+            <form id="paybackForm" class="form-stack">
+              <div class="form-row">
+                <label>Name<input id="paybackName" maxlength="60" required placeholder="Who you owe"></label>
+                <label>How much? (MAD)<input id="paybackAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="300"></label>
+              </div>
+              <label class="check-row"><input type="checkbox" id="paybackSeparateInput"><span>Paid on its own plan<small>For a business or anyone you agreed fixed dates with. It stays out of the order.</small></span></label>
+              <button class="secondary-button full-width" type="submit">Add to the end</button>
+            </form>
+          </details>
+          <details class="bills-details">
+            <summary>Paste a whole list</summary>
+            <form id="paybackPasteForm" class="form-stack">
+              <label>One person per line, in the order you will pay<textarea id="paybackPaste" rows="7" placeholder="Amine 300&#10;Youssef 600&#10;Car agency 3400 own plan"></textarea></label>
+              <p class="small-note payback-tight">Write "own plan" at the end of a line to keep it out of the order. Your list stays on this phone only.</p>
+              <button class="secondary-button full-width" type="submit">Add these</button>
+            </form>
+          </details>
+        </section>
       </section>
 
       <!-- ============ SETTINGS ============ -->

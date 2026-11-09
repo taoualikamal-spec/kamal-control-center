@@ -8,6 +8,7 @@ It has four parts:
 - **Month** — big things. Your money split into boxes, what you got and spent, what you paid back, and one big thing for the month.
 - **Year** — the whole year. What you learned, and twelve months of your focus time.
 - **Waiting** — for when you want to smoke or use. It helps you wait a few minutes until the feeling passes.
+- **Pay back** — from Month. The people you owe, in the order you will pay them, with a tick for each one paid.
 
 The app never scores you and never punishes a bad day. If you miss a day, you just start again the next day.
 
@@ -39,6 +40,7 @@ node tests/test-reserve.js
 node tests/test-regression.js
 node tests/test-navigation.js
 node tests/test-sleep.js
+node tests/test-payback.js
 ```
 
 Each one ends with `ALL ... PASS`. If it says `FAILED`, the line above it says what broke.
