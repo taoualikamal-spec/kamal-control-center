@@ -769,6 +769,10 @@ function addPaybackFromPaste(event) {
    Home money is set aside as each payment arrives, kept apart, and sent on
    the 1st. Anything set aside beyond this month's amount is next month's
    buffer, so one bad month dips the buffer instead of home.
+   Home's money is not typed twice: every "Money in" sends its home-box share
+   here by itself (worked out from the income, so changing or deleting the
+   income changes Home too), and "I sent it home" takes the money out of the
+   home box as a real expense.
    Hours are logged because the paycheck only comes after a block of hours
    (40 by default), so the hours are the earliest sign of a short month.
    Nothing here says "late" or "failed": a month either went home in full by
@@ -785,13 +789,17 @@ function normalizeHome(home) {
   return {
     target: Math.round(positive(h.target, 0)),
     since: /^\d{4}-\d{2}$/.test(String(h.since || '')) ? h.since : '',
+    // Money in counts toward home from this day on. Homes set up before this
+    // field existed start counting from the day they load.
+    startedOn: /^\d{4}-\d{2}-\d{2}$/.test(String(h.startedOn || '')) ? h.startedOn
+      : Number(h.target) > 0 ? new Date().toISOString().slice(0, 10) : '',
     weeklyHours: positive(h.weeklyHours, 27),
     blockHours: positive(h.blockHours, 40) || 40,
     rate: positive(h.rate, 0),
     hours: dated(h.hours).map(item => ({ id: item.id || paybackId(), date: item.date, hours: homeHours(item.hours) })).filter(item => item.hours > 0),
     payouts: dated(h.payouts).map(item => ({ id: item.id || paybackId(), date: item.date, amount: Math.max(0, Math.round(Number(item.amount || 0))) })),
     moves: dated(h.moves).filter(item => item.kind === 'aside' || item.kind === 'sent')
-      .map(item => ({ id: item.id || paybackId(), date: item.date, kind: item.kind, amount: Math.round(Number(item.amount || 0)), month: /^\d{4}-\d{2}$/.test(String(item.month || '')) ? item.month : item.date.slice(0, 7) }))
+      .map(item => ({ id: item.id || paybackId(), date: item.date, kind: item.kind, amount: Math.round(Number(item.amount || 0)), month: /^\d{4}-\d{2}$/.test(String(item.month || '')) ? item.month : item.date.slice(0, 7), transactionId: item.transactionId || null }))
       .filter(item => item.amount > 0)
   };
 }
@@ -806,15 +814,46 @@ function setHomeSettings({ target, weeklyHours, blockHours, rate }, date = today
   if (target !== undefined) {
     home.target = Math.max(0, Math.round(Number(target) || 0));
     if (home.target && !home.since) home.since = homeStartMonth(date);
+    if (home.target && !home.startedOn) home.startedOn = date;
   }
   if (weeklyHours !== undefined) home.weeklyHours = Math.max(0, Number(weeklyHours) || 0);
   if (blockHours !== undefined) home.blockHours = Math.max(1, Number(blockHours) || 40);
   if (rate !== undefined) home.rate = Math.max(0, Number(rate) || 0);
 }
 
+// The money box that is home: "family" in the default boxes, otherwise the
+// first box with "home" in its name.
+function homeEnvelopeId() {
+  const boxes = state.settings.envelopes;
+  return (boxes.find(box => box.id === 'family') || boxes.find(box => /home/i.test(box.name)) || {}).id || null;
+}
+
+// Home's part of one Money in: what the split put in the home box, not
+// counting bills paid from that box out of the same money.
+function homeShareOfIncome(entry) {
+  const box = homeEnvelopeId();
+  if (!box || entry.type !== 'income') return 0;
+  const billsFromBox = sumAmounts(paymentsFromIncome(entry.id).filter(payment => payment.envelopeId === box));
+  return Math.max(0, Math.round(Number(entry.allocations?.[box] || 0) - billsFromBox));
+}
+
+function homeIncomeShares(home = state.home) {
+  if (!home.target || !home.startedOn) return [];
+  return state.transactions
+    .filter(entry => entry.type === 'income' && entry.date >= home.startedOn)
+    .map(entry => ({ id: entry.id, date: entry.date, amount: homeShareOfIncome(entry), income: entry.amount, closesBlock: Boolean(entry.closesBlock) }))
+    .filter(item => item.amount > 0 || item.closesBlock);
+}
+
+// Paychecks that close a block of hours: marked on Money in (older ones were
+// logged on the Home page itself).
+function homePayouts(home = state.home) {
+  return [...home.payouts, ...homeIncomeShares(home).filter(item => item.closesBlock).map(item => ({ id: item.id, date: item.date, amount: item.income }))];
+}
+
 function homeRate(home = state.home) {
   if (home.rate) return home.rate;
-  const last = [...home.payouts].sort((a, b) => a.date.localeCompare(b.date)).pop();
+  const last = homePayouts(home).sort((a, b) => a.date.localeCompare(b.date)).pop();
   return last && last.amount ? Math.round(last.amount / home.blockHours) : 0;
 }
 
@@ -833,7 +872,7 @@ function homeSummary(asOf = today()) {
   const thisMonth = monthKey(asOf);
   const since = home.since || homeStartMonth(asOf);
   const dueMonth = thisMonth >= since && homeSentFor(thisMonth) < target ? thisMonth : shiftMonth(thisMonth, 1);
-  const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside'));
+  const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside')) + sumAmounts(homeIncomeShares());
   const sentTotal = sumAmounts(home.moves.filter(item => item.kind === 'sent'));
   const balance = asideTotal - sentTotal;
   const need = Math.max(0, target - homeSentFor(dueMonth));
@@ -844,7 +883,7 @@ function homeSummary(asOf = today()) {
   const weekEnd = shiftDate(weekStart, 6);
   const weekHours = homeHours(home.hours.filter(item => item.date >= weekStart && item.date <= weekEnd).reduce((sum, item) => sum + item.hours, 0));
   const totalHours = home.hours.reduce((sum, item) => sum + item.hours, 0);
-  const blockDone = homeHours(Math.max(0, totalHours - home.blockHours * home.payouts.length));
+  const blockDone = homeHours(Math.max(0, totalHours - home.blockHours * homePayouts().length));
   const rate = homeRate();
 
   // Every month from the start up to this one, once its 1st has come.
@@ -883,21 +922,25 @@ function addHomeMove(kind, amount, date = today()) {
   return entry;
 }
 
-// A paycheck closes one block of hours; part of it goes straight to home.
-function recordSimonPay(amount, toHome, date = today()) {
-  const value = Math.round(Number(amount || 0));
-  if (!(value > 0)) return null;
-  const payout = { id: makeId(), date, amount: value };
-  state.home.payouts.push(payout);
-  const aside = Math.min(value, Math.max(0, Math.round(Number(toHome || 0))));
-  if (aside) addHomeMove('aside', aside, date);
-  return { payout, aside };
+// Sending home is also money leaving the home box, so Money out shows it.
+function sendHome(amount, date = today()) {
+  const move = addHomeMove('sent', amount, date);
+  if (!move) return null;
+  const box = homeEnvelopeId();
+  if (box) {
+    const expense = { id: makeId(), type: 'expense', amount: move.amount, date, envelopeId: box, note: 'Sent home', homeMoveId: move.id, createdAt: new Date().toISOString() };
+    state.transactions.push(expense);
+    move.transactionId = expense.id;
+  }
+  return move;
 }
 
 function removeHomeEntry(kind, id) {
   const list = kind === 'hours' ? 'hours' : kind === 'payout' ? 'payouts' : 'moves';
   const before = state.home[list].length;
+  const gone = state.home[list].find(item => item.id === id);
   state.home[list] = state.home[list].filter(item => item.id !== id);
+  if (gone && gone.transactionId) state.transactions = state.transactions.filter(entry => entry.id !== gone.transactionId);
   return state.home[list].length < before;
 }
 
@@ -909,6 +952,7 @@ function homeActivity(limit = 12) {
   return [
     ...home.hours.map(item => ({ ...item, type: 'hours', text: `${item.hours} h of work` })),
     ...home.payouts.map(item => ({ ...item, type: 'payout', text: `Paid for ${home.blockHours} h: ${money(item.amount)}` })),
+    ...homeIncomeShares(home).map(item => ({ ...item, type: 'income', fixed: true, text: `From Money in ${money(item.income)}: ${money(item.amount)} to home${item.closesBlock ? ` · paid ${home.blockHours} h` : ''}` })),
     ...home.moves.map(item => ({ ...item, type: 'move', text: item.kind === 'sent' ? `Sent home: ${money(item.amount)} (for ${homeMonthLabel(item.month)})` : `Set aside for home: ${money(item.amount)}` }))
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
 }
@@ -918,6 +962,8 @@ function renderHome() {
   const s = homeSummary();
   const entry = $('#homeEntrySummary');
   $('#homeSetup').hidden = Boolean(s.target);
+  $('#incomeClosesBlockRow').hidden = !s.target;
+  $('#incomeClosesBlockText').textContent = `This pays a block of ${state.home.blockHours} work hours`;
   $('#homeMain').hidden = !s.target;
   if (entry) entry.textContent = !s.target ? 'Set how much goes home each month.'
     : s.covered ? `Ready for ${homeDueLabel(s.dueDate)}: ${money(s.need)}. Send it on the day.`
@@ -927,7 +973,7 @@ function renderHome() {
   $('#homeWeeklyInput').value = settings.weeklyHours || '';
   $('#homeBlockInput').value = settings.blockHours || '';
   $('#homeRateInput').value = settings.rate || '';
-  ['#homeHoursDate', '#homePayDate', '#homeAsideDate', '#homeSentDate'].forEach(selector => { $(selector).value ||= today(); });
+  ['#homeHoursDate', '#homeSentDate'].forEach(selector => { $(selector).value ||= today(); });
   if (!s.target) return;
 
   $('#homeDueTitle').textContent = `For ${homeDueLabel(s.dueDate)}`;
@@ -954,15 +1000,14 @@ function renderHome() {
     ? `At ${money(s.rate)} an hour, ${money(s.target)} a month takes about ${s.homeHoursPerWeek} h of work a week, before anything for yourself.`
     : 'Add your hourly rate to see how many hours home takes.';
 
-  const toHome = $('#homePayToHome');
-  if (!toHome.dataset.touched) toHome.placeholder = String(s.toSetAside);
-  $('#homePayHint').textContent = s.toSetAside
-    ? `Home first: ${money(s.toSetAside)} still to set aside for ${homeDueLabel(s.dueDate)}.`
-    : `Home for ${homeDueLabel(s.dueDate)} is ready. Extra can go to next month's buffer once your own-plan payments are done.`;
+  const box = state.settings.envelopes.find(item => item.id === homeEnvelopeId());
+  $('#homeSourceNote').textContent = box
+    ? `Every time you add Money in, the ${box.name} share (${box.percent}%) comes here by itself.`
+    : 'Add a money box with "home" in its name, and its share of every Money in comes here.';
 
   $('#homeMonthsWrap').hidden = !s.months.length;
   $('#homeMonths').innerHTML = s.months.map(item => `<li class="${item.onTime ? 'on' : ''}"><span>${homeMonthLabel(item.month)}</span><b>${item.sent ? money(item.sent) : 'not sent yet'}${item.onTime ? ' · on time' : ''}</b></li>`).join('');
-  $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}</small></span><button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button></li>`).join('')
+  $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}${item.fixed ? ' · change it in Money in' : ''}</small></span>${item.fixed ? '' : `<button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button>`}</li>`).join('')
     || '<li class="small-note">Nothing logged yet.</li>';
 }
 
@@ -995,31 +1040,11 @@ function homeLogHours(event) {
   toast(s.weekHoursLeft ? `${entry.hours} h logged. ${s.weekHoursLeft} h to go this week.` : `${entry.hours} h logged. This week is covered.`);
 }
 
-function homeRecordPay(event) {
-  event.preventDefault();
-  const suggestion = homeSummary().toSetAside;
-  const typed = $('#homePayToHome').value;
-  const result = recordSimonPay($('#homePayAmount').value, typed === '' ? suggestion : typed, homeDateValue('#homePayDate'));
-  if (!result) return;
-  event.target.reset(); delete $('#homePayToHome').dataset.touched;
-  saveState(); renderAll();
-  toast(result.aside ? `${money(result.aside)} set aside for home first. The rest is yours to plan.` : 'Payment logged.');
-}
-
-function homeSetAside(event) {
-  event.preventDefault();
-  const entry = addHomeMove('aside', $('#homeAsideAmount').value, homeDateValue('#homeAsideDate'));
-  if (!entry) return;
-  event.target.reset();
-  saveState(); renderAll();
-  toast(`${money(entry.amount)} set aside for home.`);
-}
-
 function homeSend(event) {
   event.preventDefault();
   const s = homeSummary();
   const amount = $('#homeSentAmount').value || s.ready || s.need;
-  const entry = addHomeMove('sent', amount, homeDateValue('#homeSentDate'));
+  const entry = sendHome(amount, homeDateValue('#homeSentDate'));
   if (!entry) return;
   event.target.reset();
   saveState(); renderAll();
@@ -1952,7 +1977,7 @@ function addIncome(event) {
   const amount = Math.round(Number($('#incomeAmount').value));
   if (!amount || amount < 1) return;
   const date = $('#incomeDate').value;
-  const base = { amount, date, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim() };
+  const base = { amount, date, source: $('#incomeSource').value.trim(), note: $('#incomeNote').value.trim(), closesBlock: Boolean(state.home.target && $('#incomeClosesBlock').checked) };
 
   if (editingIncomeId) {
     // Bills this money already paid stay paid; only the remainder is split again.
@@ -1981,9 +2006,10 @@ function addIncome(event) {
   saveState();
   cancelIncomeEdit();
   renderAll();
-  toast(payments.length
+  const homePart = state.home.target && date >= state.home.startedOn ? homeShareOfIncome(state.transactions.find(item => item.id === incomeId)) : 0;
+  toast((payments.length
     ? `Paid ${payments.length} ${payments.length === 1 ? 'thing' : 'things'} first (${money(paying)}), then split ${money(amount - paying)} into your boxes.`
-    : `${money(amount)} split into your money boxes.`);
+    : `${money(amount)} split into your money boxes.`) + (homePart ? ` ${money(homePart)} went to Home.` : ''));
 }
 
 function addExpense(event) {
@@ -1995,6 +2021,8 @@ function addExpense(event) {
   if (editingExpenseId) {
     const entry = state.transactions.find(item => item.id === editingExpenseId);
     if (entry) Object.assign(entry, fields);
+    const move = entry && entry.homeMoveId && state.home.moves.find(item => item.id === entry.homeMoveId);
+    if (move) Object.assign(move, { amount, date: fields.date });
   } else {
     state.transactions.push({ id: makeId(), type: 'expense', ...fields, createdAt: new Date().toISOString() });
   }
@@ -2035,6 +2063,7 @@ function editTransaction(id) {
     $('#incomeDate').value = entry.date;
     $('#incomeSource').value = entry.source || '';
     $('#incomeNote').value = entry.note || '';
+    $('#incomeClosesBlock').checked = Boolean(entry.closesBlock);
     renderIncomePreview();
     setFormEditing('#incomeForm', true, 'Save the change');
     $('#incomeAmount').focus();
@@ -2296,6 +2325,7 @@ function deleteTransaction(id) {
   const linked = paymentsFromIncome(id);
   const removed = new Set([id, ...linked.map(entry => entry.id)]);
   state.transactions = state.transactions.filter(entry => !removed.has(entry.id));
+  state.home.moves = state.home.moves.filter(move => !move.transactionId || !removed.has(move.transactionId));
   if (editingIncomeId === id) cancelIncomeEdit();
   if (editingExpenseId && removed.has(editingExpenseId)) cancelExpenseEdit();
   saveState(); renderAll();
@@ -2395,10 +2425,7 @@ function registerEvents() {
   $('#homeSetupForm').addEventListener('submit', homeSetupSubmit);
   $('#homeSettingsForm').addEventListener('submit', saveHomeSettings);
   $('#homeHoursForm').addEventListener('submit', homeLogHours);
-  $('#homePayForm').addEventListener('submit', homeRecordPay);
-  $('#homeAsideForm').addEventListener('submit', homeSetAside);
   $('#homeSentForm').addEventListener('submit', homeSend);
-  $('#homePayToHome').addEventListener('input', event => { event.target.dataset.touched = '1'; });
   $('#homeActivity').addEventListener('click', handleHomeDelete);
   ['#paybackList', '#paybackSeparate'].forEach(selector => {
     $(selector).addEventListener('click', handlePaybackClick);

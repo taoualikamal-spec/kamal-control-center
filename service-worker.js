@@ -1,4 +1,4 @@
-const CACHE_NAME = 'up-again-v24';
+const CACHE_NAME = 'up-again-v25';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './insights.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {

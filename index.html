@@ -190,6 +190,7 @@
               <div class="form-row"><label>How much? (MAD)<input id="incomeAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="14000"></label><label>What day?<input id="incomeDate" type="date" required></label></div>
               <label>Who from?<input id="incomeSource" maxlength="80" required placeholder="Work, a client, a friend..."></label>
               <label>Note <span class="optional">you can skip this</span><input id="incomeNote" maxlength="160" placeholder="Pay, cash, extra work..."></label>
+              <label class="check-row" id="incomeClosesBlockRow" hidden><input type="checkbox" id="incomeClosesBlock"><span id="incomeClosesBlockText">This pays a block of work hours</span></label>
               <div class="pay-first" id="payFirst">
                 <p class="chip-label">Pay these first</p>
                 <p class="how-to">Suggested: what is late or due this week, with things needed to live first. Change anything you want.</p>
@@ -423,6 +424,7 @@
             <p class="settings-group-title" id="homeDueTitle">For the 1st</p>
             <div class="progress-track"><div class="progress-fill" id="homeFill" style="width:0%"></div></div>
             <p class="home-status" id="homeStatus"></p>
+            <p class="small-note payback-tight" id="homeSourceNote"></p>
             <form id="homeSentForm" class="home-inline-form">
               <input id="homeSentAmount" type="number" inputmode="decimal" min="1" step="1" aria-label="Amount sent home (MAD)">
               <input id="homeSentDate" type="date" aria-label="Date sent">
@@ -446,30 +448,7 @@
               </div>
               <button class="secondary-button full-width" type="submit">Log hours</button>
             </form>
-            <details class="bills-details">
-              <summary>I got paid</summary>
-              <form id="homePayForm" class="form-stack">
-                <p class="small-note payback-tight" id="homePayHint"></p>
-                <div class="form-row">
-                  <label>How much? (MAD)<input id="homePayAmount" type="number" inputmode="decimal" min="1" step="1" required></label>
-                  <label>Set aside for home (MAD)<input id="homePayToHome" type="number" inputmode="decimal" min="0" step="1"></label>
-                </div>
-                <label>Day<input id="homePayDate" type="date"></label>
-                <p class="small-note payback-tight">Leave "Set aside for home" empty to use the amount shown in it. Each payment closes one block of hours.</p>
-                <button class="secondary-button full-width" type="submit">Home first, then the rest</button>
-              </form>
-            </details>
-            <details class="bills-details">
-              <summary>Set aside other money for home</summary>
-              <form id="homeAsideForm" class="form-stack">
-                <div class="form-row">
-                  <label>How much? (MAD)<input id="homeAsideAmount" type="number" inputmode="decimal" min="1" step="1" required></label>
-                  <label>Day<input id="homeAsideDate" type="date"></label>
-                </div>
-                <p class="small-note payback-tight">From an order, a gift, anything. Money beyond this month's amount becomes next month's.</p>
-                <button class="secondary-button full-width" type="submit">Set aside</button>
-              </form>
-            </details>
+            <button class="secondary-button full-width home-to-income" type="button" data-open-tab="month" data-focus="#incomeAmount">I got paid: add it in Money in</button>
           </section>
 
           <section class="panel">

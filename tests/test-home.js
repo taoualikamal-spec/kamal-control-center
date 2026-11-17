@@ -4,6 +4,14 @@
 const { load, reporter } = require('./harness-lib.js');
 const { check, done } = reporter();
 
+// Money in, the way the form saves it: bills first (none here), then the
+// split. The default home box ("Family & home") takes 60%.
+function moneyIn(h, amount, date, closesBlock = false) {
+  const entry = { id: 'inc-' + Math.random().toString(16).slice(2), type: 'income', amount, date, source: 'Work', note: '', closesBlock, allocations: h.ctx.combineAllocations([], amount) };
+  h.api.state.transactions.push(entry);
+  return entry;
+}
+
 {
   const h = load();
   const c = h.ctx;
@@ -15,24 +23,45 @@ const { check, done } = reporter();
   let sum = c.homeSummary('2026-11-17');
   check('the next 1st is the one to fill', sum.dueDate === '2026-12-01' && sum.need === 8000 && sum.ready === 0);
 
-  // Two paychecks: the app suggests home first, never more than the paycheck.
-  c.recordSimonPay(3600, 3600, '2026-11-20');
+  moneyIn(h, 5000, '2026-11-10');   // before Home was set up: not home's
+  check('money in from before Home started is left alone', c.homeSummary('2026-11-17').ready === 0);
+  // Two paychecks through Money in: the home box share goes to Home by itself.
+  const first = moneyIn(h, 6000, '2026-11-20');
   sum = c.homeSummary('2026-11-21');
-  check('a paycheck set aside counts toward the 1st', sum.ready === 3600 && sum.toSetAside === 4400 && !sum.covered);
-  c.recordSimonPay(3600, 99999, '2026-11-27');
-  sum = c.homeSummary('2026-11-28');
-  check('setting aside is capped at what was paid', sum.ready === 7200);
-  c.addHomeMove('aside', 2800, '2026-11-29');
+  check('Money in sends the home box share to Home', sum.ready === 3600 && sum.toSetAside === 4400 && !sum.covered);
+  first.amount = 7000; first.allocations = c.combineAllocations([], 7000);
+  check('changing a Money in changes Home', c.homeSummary('2026-11-21').ready === 4200);
+  c.deleteTransaction(first.id);
+  check('deleting a Money in takes it out of Home', c.homeSummary('2026-11-21').ready === 0);
+  moneyIn(h, 6000, '2026-11-20');
+  moneyIn(h, 10000, '2026-11-27');
   sum = c.homeSummary('2026-11-29');
-  check('money beyond the amount becomes next month\'s buffer', sum.covered && sum.ready === 8000 && sum.buffer === 2000);
+  check('money beyond the amount becomes next month\'s buffer', sum.covered && sum.ready === 8000 && sum.buffer === 1600);
 
   // Sending on the 1st counts for December, on time.
-  const sent = c.addHomeMove('sent', 8000, '2026-12-01');
+  const sent = c.sendHome(8000, '2026-12-01');
   check('money sent on the 1st is for that month', sent.month === '2026-12');
+  const out = s().transactions.find(entry => entry.id === sent.transactionId);
+  check('sending home is money out of the home box', Boolean(out) && out.type === 'expense' && out.envelopeId === 'family' && out.amount === 8000);
   sum = c.homeSummary('2026-12-01');
   check('after sending, the next 1st is in front of you', sum.dueDate === '2027-01-01');
-  check('the buffer is now this month\'s start', sum.ready === 2000 && sum.buffer === 0);
+  check('the buffer is now this month\'s start', sum.ready === 1600 && sum.buffer === 0);
   check('December went home on time', sum.months.length === 1 && sum.months[0].onTime === true && sum.onTimeCount === 1);
+  c.deleteTransaction(out.id);
+  check('deleting the money out also undoes the sending', c.homeSummary('2026-12-01').dueMonth === '2026-12' && !s().home.moves.some(move => move.kind === 'sent'));
+  const again = c.sendHome(8000, '2026-12-01');
+  c.removeHomeEntry('move', again.id);
+  check('removing it on Home also removes the money out', !s().transactions.some(entry => entry.homeMoveId === again.id));
+}
+
+{
+  // Bills paid from the home box out of the same money are not counted twice.
+  const h = load();
+  const c = h.ctx;
+  c.setHomeSettings({ target: 8000 }, '2026-11-17');
+  const payment = { id: 'bill-pay', type: 'expense', amount: 500, date: '2026-11-20', envelopeId: 'family', note: 'Electricity', fromIncomeId: 'inc-x' };
+  h.api.state.transactions.push(payment, { id: 'inc-x', type: 'income', amount: 5500, date: '2026-11-20', source: 'Work', allocations: c.combineAllocations([payment], 5000) });
+  check('only the split part of the home box goes to Home', c.homeSummary('2026-11-21').ready === 3000);
 }
 
 {
@@ -42,10 +71,10 @@ const { check, done } = reporter();
   c.setHomeSettings({ target: 8000 }, '2026-12-02');
   check('set up by the 3rd, this month counts', h.api.state.home.since === '2026-12');
   c.addHomeMove('aside', 8000, '2026-12-02');
-  c.addHomeMove('sent', 5000, '2026-12-02');
+  c.sendHome(5000, '2026-12-02');
   let sum = c.homeSummary('2026-12-10');
   check('a part sent leaves the rest due this month', sum.dueMonth === '2026-12' && sum.need === 3000 && sum.ready === 3000);
-  c.addHomeMove('sent', 3000, '2026-12-10');
+  c.sendHome(3000, '2026-12-10');
   sum = c.homeSummary('2026-12-10');
   check('sent in full but after the 3rd is not on time', sum.months[0].sent === 8000 && sum.months[0].onTime === false);
   sum = c.homeSummary('2027-01-05');
@@ -65,7 +94,7 @@ const { check, done } = reporter();
   check('the week starts on Monday', sum.weekHours === 11.5 && sum.weekHoursLeft === 15.5);
   check('all hours count toward the next paycheck', sum.blockDone === 19.5 && sum.blockValue === 1755);
   c.addHomeHours(24, '2026-11-18');
-  c.recordSimonPay(3600, 0, '2026-11-19');
+  moneyIn(h, 3600, '2026-11-19', true);
   sum = c.homeSummary('2026-11-19');
   check('a paycheck closes a block and the extra hours carry over', sum.blockDone === 3.5);
   check('home alone needs this many hours a week', sum.homeHoursPerWeek === Math.ceil(8000 / (90 * 4.33)));
@@ -76,7 +105,7 @@ const { check, done } = reporter();
   const h = load();
   const c = h.ctx;
   c.setHomeSettings({ target: 8000, blockHours: 40 }, '2026-11-17');
-  c.recordSimonPay(3720, 0, '2026-11-20');
+  moneyIn(h, 3720, '2026-11-20', true);
   check('the hourly rate is learned from a paycheck', c.homeRate() === 93);
 }
 
