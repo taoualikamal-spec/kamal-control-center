@@ -55,6 +55,35 @@ function moneyIn(h, amount, date, closesBlock = false) {
 }
 
 {
+  // Starting now: send what is ready on the first 1st, then the full amount.
+  const h = load();
+  const c = h.ctx;
+  c.setHomeSettings({ target: 8000 }, '2026-11-17');
+  moneyIn(h, 3720, '2026-11-21');
+  moneyIn(h, 3720, '2026-11-28');
+  let sum = c.homeSummary('2026-12-01');
+  check('on the first 1st, what was saved since starting is ready', sum.dueDate === '2026-12-01' && sum.ready === 4464);
+  const part = c.sendHome(4464, '2026-12-01', true);
+  check('sending less and ticking "all for this month" closes the month', part.closesMonth === true);
+  sum = c.homeSummary('2026-12-02');
+  check('then the full amount for the next 1st is the goal', sum.dueDate === '2027-01-01' && sum.need === 8000 && sum.ready === 0);
+  check('the month shows what was sent, honestly', sum.months[0].sent === 4464 && sum.months[0].onTime === false && sum.months[0].partial === true);
+  moneyIn(h, 14880, '2026-12-20');
+  sum = c.homeSummary('2026-12-21');
+  check('December money goes to January, not to finishing December', sum.ready === 8000 && sum.buffer === 928);
+
+  // Without the tick, the month stays open for the rest.
+  const h2 = load();
+  const c2 = h2.ctx;
+  c2.setHomeSettings({ target: 8000 }, '2026-11-17');
+  moneyIn(h2, 3720, '2026-11-21');
+  c2.sendHome(2000, '2026-12-01', false);
+  check('without the tick, the rest is still due this month', c2.homeSummary('2026-12-02').dueMonth === '2026-12' && c2.homeSummary('2026-12-02').need === 6000);
+  const full = c2.sendHome(8000, '2027-01-01', true);
+  check('the tick does nothing when the full amount is sent', full.closesMonth !== true);
+}
+
+{
   // Bills paid from the home box out of the same money are not counted twice.
   const h = load();
   const c = h.ctx;

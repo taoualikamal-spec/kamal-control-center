@@ -714,3 +714,5 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .cancel-client { width: 100%; text-align: center; }
 
 #googleProgress.error { color: var(--debt); font-weight: 700; }
+
+.home-sent-all { grid-column: 1 / -1; margin-top: 4px; }

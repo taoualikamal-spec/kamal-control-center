@@ -953,7 +953,7 @@ function normalizeHome(home) {
     hours: dated(h.hours).map(item => ({ id: item.id || paybackId(), date: item.date, hours: homeHours(item.hours) })).filter(item => item.hours > 0),
     payouts: dated(h.payouts).map(item => ({ id: item.id || paybackId(), date: item.date, amount: Math.max(0, Math.round(Number(item.amount || 0))) })),
     moves: dated(h.moves).filter(item => item.kind === 'aside' || item.kind === 'sent')
-      .map(item => ({ id: item.id || paybackId(), date: item.date, kind: item.kind, amount: Math.round(Number(item.amount || 0)), month: /^\d{4}-\d{2}$/.test(String(item.month || '')) ? item.month : item.date.slice(0, 7), transactionId: item.transactionId || null }))
+      .map(item => ({ id: item.id || paybackId(), date: item.date, kind: item.kind, amount: Math.round(Number(item.amount || 0)), month: /^\d{4}-\d{2}$/.test(String(item.month || '')) ? item.month : item.date.slice(0, 7), transactionId: item.transactionId || null, closesMonth: Boolean(item.closesMonth) }))
       .filter(item => item.amount > 0)
   };
 }
@@ -1015,6 +1015,12 @@ function homeSentFor(month, home = state.home) {
   return sumAmounts(home.moves.filter(item => item.kind === 'sent' && item.month === month));
 }
 
+// Done for the month: the full amount went home, or what went was all there
+// was this time ("That's all for this month"), so the next 1st is the target.
+function homeMonthClosed(month, home = state.home) {
+  return homeSentFor(month, home) >= home.target || home.moves.some(item => item.kind === 'sent' && item.month === month && item.closesMonth);
+}
+
 function homeWeekStart(date) {
   const day = new Date(`${date}T12:00:00`).getDay();
   return shiftDate(date, -((day + 6) % 7));
@@ -1025,7 +1031,7 @@ function homeSummary(asOf = today()) {
   const target = home.target;
   const thisMonth = monthKey(asOf);
   const since = home.since || homeStartMonth(asOf);
-  const dueMonth = thisMonth >= since && homeSentFor(thisMonth) < target ? thisMonth : shiftMonth(thisMonth, 1);
+  const dueMonth = thisMonth >= since && !homeMonthClosed(thisMonth) ? thisMonth : shiftMonth(thisMonth, 1);
   const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside')) + sumAmounts(homeIncomeShares());
   const sentTotal = sumAmounts(home.moves.filter(item => item.kind === 'sent'));
   const balance = asideTotal - sentTotal;
@@ -1045,7 +1051,7 @@ function homeSummary(asOf = today()) {
   for (let month = since; month <= thisMonth && target; month = shiftMonth(month, 1)) {
     const sent = home.moves.filter(item => item.kind === 'sent' && item.month === month);
     const onTimeAmount = sumAmounts(sent.filter(item => item.date <= `${month}-0${HOME_ON_TIME_DAY}`));
-    months.push({ month, sent: sumAmounts(sent), onTime: onTimeAmount >= target });
+    months.push({ month, sent: sumAmounts(sent), onTime: onTimeAmount >= target, partial: sumAmounts(sent) < target && sent.some(item => item.closesMonth) });
   }
   const recent = months.slice(-12);
 
@@ -1077,9 +1083,10 @@ function addHomeMove(kind, amount, date = today()) {
 }
 
 // Sending home is also money leaving the home box, so Money out shows it.
-function sendHome(amount, date = today()) {
+function sendHome(amount, date = today(), closesMonth = false) {
   const move = addHomeMove('sent', amount, date);
   if (!move) return null;
+  if (closesMonth && homeSentFor(move.month) < state.home.target) move.closesMonth = true;
   const box = homeEnvelopeId();
   if (box) {
     const expense = { id: makeId(), type: 'expense', amount: move.amount, date, envelopeId: box, note: 'Sent home', homeMoveId: move.id, createdAt: new Date().toISOString() };
@@ -1137,6 +1144,7 @@ function renderHome() {
     ? `Ready: ${money(s.need)}. On the 1st it goes home, before anyone else.`
     : `${money(s.ready)} of ${money(s.need)} set aside · ${money(s.toSetAside)} to go`;
   $('#homeSentAmount').placeholder = String(s.ready || s.need);
+  $('#homeSentAllRow').hidden = s.covered;
 
   $('#homeWeek').textContent = `${s.weekHours} of ${s.weeklyHours} h`;
   $('#homeWeekDetail').textContent = s.weekHoursLeft
@@ -1160,7 +1168,7 @@ function renderHome() {
     : 'Add a money box with "home" in its name, and its share of every Money in comes here.';
 
   $('#homeMonthsWrap').hidden = !s.months.length;
-  $('#homeMonths').innerHTML = s.months.map(item => `<li class="${item.onTime ? 'on' : ''}"><span>${homeMonthLabel(item.month)}</span><b>${item.sent ? money(item.sent) : 'not sent yet'}${item.onTime ? ' · on time' : ''}</b></li>`).join('');
+  $('#homeMonths').innerHTML = s.months.map(item => `<li class="${item.onTime ? 'on' : ''}"><span>${homeMonthLabel(item.month)}</span><b>${item.sent ? money(item.sent) : 'not sent yet'}${item.onTime ? ' · on time' : item.partial ? ' · what there was' : ''}</b></li>`).join('');
   $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}${item.fixed ? ' · change it in Money in' : ''}</small></span>${item.fixed ? '' : `<button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button>`}</li>`).join('')
     || '<li class="small-note">Nothing logged yet.</li>';
 }
@@ -1198,11 +1206,14 @@ function homeSend(event) {
   event.preventDefault();
   const s = homeSummary();
   const amount = $('#homeSentAmount').value || s.ready || s.need;
-  const entry = sendHome(amount, homeDateValue('#homeSentDate'));
+  const entry = sendHome(amount, homeDateValue('#homeSentDate'), $('#homeSentAll').checked);
   if (!entry) return;
   event.target.reset();
   saveState(); renderAll();
-  toast(`${money(entry.amount)} sent home for ${homeMonthLabel(entry.month)}. That one counts.`);
+  const next = homeSummary();
+  toast(entry.closesMonth
+    ? `${money(entry.amount)} sent home for ${homeMonthLabel(entry.month)}. That one counts. Next: ${money(next.target)} for ${homeDueLabel(next.dueDate)}.`
+    : `${money(entry.amount)} sent home for ${homeMonthLabel(entry.month)}. That one counts.`);
 }
 
 function handleHomeDelete(event) {
