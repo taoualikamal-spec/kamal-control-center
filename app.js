@@ -1319,6 +1319,7 @@ function renderRoutine() {
   $('#googleStatus').textContent = !clientId ? 'Google sign-in is not set up yet. Paste the client ID below once.'
     : !google.calendarId ? 'Not sent yet. One tap creates an "Up Again" calendar in your Google account with every reminder.'
     : `Last sent ${dateLabel(google.lastSync.slice(0, 10))}. ${daysLeft >= 0 ? `Prayer times are in the calendar until ${dateLabel(google.prayersUntil)}.` : 'Prayer times have run out. Send again.'}`;
+  if (google.lastError && !$('#googleProgress').textContent) setRoutineProgress(`Last problem: ${google.lastError}`, true);
   $('#googleSyncButton').textContent = google.calendarId ? 'Send changes to Google Calendar' : 'Connect and send to Google Calendar';
   const nudge = $('#routineSyncNudge');
   if (nudge) nudge.hidden = !(google.calendarId && daysLeft >= 0 && daysLeft < 7);
@@ -1378,7 +1379,11 @@ function handleRoutineClick(event) {
   }
 }
 
-function setRoutineProgress(text) { $('#googleProgress').textContent = text; }
+function setRoutineProgress(text, isError = false) {
+  const line = $('#googleProgress');
+  line.textContent = text;
+  line.classList.toggle('error', isError);
+}
 
 async function sendRoutineToGoogle() {
   const routine = state.routine;
@@ -1393,10 +1398,11 @@ async function sendRoutineToGoogle() {
     const date = today();
     const result = await syncGoogleCalendar({
       fetchFn: (...args) => fetch(...args), token, desired: routineDesiredEvents(date), store: routine.google, todayDate: date,
-      onProgress: (done, total) => setRoutineProgress(`Sending ${done} of ${total}…`)
+      onProgress: (done, total) => { setRoutineProgress(`Sending ${done} of ${total}… keep this screen open.`); if (done % 10 === 0) saveState(); }
     });
     routine.google.lastSync = new Date().toISOString();
     routine.google.prayersUntil = addDays(date, PRAYER_DAYS_AHEAD - 1);
+    routine.google.lastError = '';
     saveState();
     setRoutineProgress('');
     renderRoutine();
@@ -1404,9 +1410,12 @@ async function sendRoutineToGoogle() {
     toast(changed ? `Google Calendar is up to date (${changed} ${changed === 1 ? 'change' : 'changes'}).` : 'Google Calendar was already up to date.');
   } catch (error) {
     if (error.status === 401) googleToken = null;
+    const sent = Object.keys(routine.google.events).length;
+    routine.google.lastError = `${new Date().toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${error.message}${error.status ? ` (${error.status}${error.reason ? `, ${error.reason}` : ''})` : ''}`;
     saveState(); // keep whatever was sent, so the next tap carries on from there
-    setRoutineProgress('');
-    toast(`Not finished: ${error.message} Tap again to carry on.`);
+    renderRoutine();
+    setRoutineProgress(`Stopped: ${error.message}${sent ? ` ${sent} reminders are already in Google; the next tap carries on from there.` : ''}`, true);
+    toast('Sending stopped. The reason is shown on the page.');
   } finally {
     button.disabled = false;
   }

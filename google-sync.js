@@ -31,15 +31,20 @@ async function getGoogleToken(clientId, firstTime) {
   if (googleToken && googleToken.expiresAt > Date.now() + 60000) return googleToken.value;
   await loadGoogleScript();
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('The Google window did not answer. Close it and tap again. If it keeps happening, open the app in Chrome instead of the installed app.')), 120000);
+    const finish = (fn, value) => { clearTimeout(timer); fn(value); };
     const client = window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: GOOGLE_SCOPE,
       callback: response => {
-        if (response.error || !response.access_token) { reject(new Error(response.error_description || response.error || 'Google did not allow it.')); return; }
+        if (response.error || !response.access_token) { finish(reject, new Error(response.error_description || response.error || 'Google did not allow it.')); return; }
         googleToken = { value: response.access_token, expiresAt: Date.now() + Number(response.expires_in || 3600) * 1000 };
-        resolve(googleToken.value);
+        finish(resolve, googleToken.value);
       },
-      error_callback: error => reject(new Error(error && error.type === 'popup_closed' ? 'The Google window was closed.' : 'Google sign-in did not finish.'))
+      error_callback: error => finish(reject, new Error(
+        error && error.type === 'popup_closed' ? 'The Google window was closed before it finished.'
+        : error && error.type === 'popup_failed_to_open' ? 'The phone blocked the Google window. Allow pop-ups for this site, or open the app in Chrome.'
+        : 'Google sign-in did not finish.'))
     });
     client.requestAccessToken({ prompt: firstTime ? 'consent' : '' });
   });
@@ -50,27 +55,57 @@ function forgetGoogleToken() {
   googleToken = null;
 }
 
-async function googleRequest(fetchFn, token, method, path, body) {
-  const response = await fetchFn(`${GOOGLE_API}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  if (response.status === 204) return null;
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = new Error((data && data.error && data.error.message) || `Google answered ${response.status}`);
-    error.status = response.status;
-    throw error;
+// An object (and a var, so it is reachable from tests) so tests can make the waiting instant.
+var googleTiming = { wait: ms => new Promise(resolve => setTimeout(resolve, ms)) };
+const RETRY_REASONS = ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'backendError'];
+
+function googleError(response, data) {
+  const reason = data && data.error && data.error.errors && data.error.errors[0] && data.error.errors[0].reason || '';
+  const message = reason === 'calendarUsageLimitsExceeded'
+    ? 'Google paused new events for a while (too many at once). What was sent is kept. Try again in an hour.'
+    : response.status === 401 ? 'The Google sign-in ran out. Tap again to sign in.'
+    : (data && data.error && data.error.message) || `Google answered ${response.status}.`;
+  const error = new Error(message);
+  error.status = response.status;
+  error.reason = reason;
+  error.retry = response.status === 429 || response.status >= 500 || (response.status === 403 && RETRY_REASONS.includes(reason));
+  return error;
+}
+
+async function googleRequest(fetchFn, token, method, path, body, tries = 6) {
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      response = await fetchFn(`${GOOGLE_API}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+    } catch {
+      if (attempt + 1 >= tries) throw new Error('No connection to Google. Check the internet and tap again; what was sent is kept.');
+      await googleTiming.wait(1000 * 2 ** attempt);
+      continue;
+    }
+    if (response.status === 204) return null;
+    const data = await response.json().catch(() => null);
+    if (response.ok) return data;
+    const error = googleError(response, data);
+    if (!error.retry || attempt + 1 >= tries) throw error;
+    await googleTiming.wait(1000 * 2 ** attempt + Math.random() * 500);
   }
-  return data;
 }
 
 // Runs jobs a few at a time, so a first sync of ~150 events stays polite.
-async function runLimited(jobs, limit = 4) {
+async function runLimited(jobs, limit = 2) {
   const results = [];
   let next = 0;
-  const worker = async () => { while (next < jobs.length) { const index = next++; results[index] = await jobs[index](); } };
+  let failed = false;
+  const worker = async () => {
+    while (next < jobs.length && !failed) {
+      const index = next++;
+      try { results[index] = await jobs[index](); } catch (error) { failed = true; throw error; }
+    }
+  };
   await Promise.all(Array.from({ length: Math.min(limit, jobs.length) }, worker));
   return results;
 }

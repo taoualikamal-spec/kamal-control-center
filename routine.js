@@ -71,7 +71,8 @@ function normalizeRoutine(routine) {
       calendarId: String(google.calendarId || ''),
       events: google.events && typeof google.events === 'object' ? google.events : {},
       lastSync: String(google.lastSync || ''),
-      prayersUntil: String(google.prayersUntil || '')
+      prayersUntil: String(google.prayersUntil || ''),
+      lastError: String(google.lastError || '')
     }
   };
 }

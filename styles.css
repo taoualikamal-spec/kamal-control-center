@@ -712,3 +712,5 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 
 .google-links { display: flex; flex-wrap: wrap; gap: 16px; }
 .cancel-client { width: 100%; text-align: center; }
+
+#googleProgress.error { color: var(--debt); font-weight: 700; }

@@ -170,3 +170,45 @@ function fakeGoogle() {
   check('the Day tab stays lit inside it', nav.litTab() === 'day');
   done();
 })();
+
+// Google says "slow down": the app waits and carries on; a hard stop is reported and nothing is lost.
+(async () => {
+  const { load: loadAgain, reporter: rep2 } = require('./harness-lib.js');
+  const r2 = rep2();
+  const h = loadAgain();
+  const c = h.ctx;
+  c.googleTiming.wait = async () => {};
+  let calls = 0, inserts = 0;
+  const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
+  const slowThenFine = async (url, options) => {
+    calls++;
+    if (options.method === 'POST' && url.endsWith('/calendars')) return reply(200, { id: 'cal' });
+    if (calls % 3 === 0) return reply(429, { error: { message: 'Rate Limit Exceeded', errors: [{ reason: 'rateLimitExceeded' }] } });
+    inserts++;
+    return reply(200, { id: `ev${calls}` });
+  };
+  const store = h.api.state.routine.google;
+  const desired = c.routineDesiredEvents('2026-11-17');
+  const result = await c.syncGoogleCalendar({ fetchFn: slowThenFine, token: 't', desired, store, todayDate: '2026-11-17' });
+  r2.check('"too many requests" is waited out, and every event still arrives', result.created === desired.length && Object.keys(store.events).length === desired.length);
+
+  const h2 = loadAgain();
+  const c2 = h2.ctx;
+  c2.googleTiming.wait = async () => {};
+  let made = 0;
+  const pauses = async (url, options) => {
+    if (options.method === 'POST' && url.endsWith('/calendars')) return reply(200, { id: 'cal' });
+    if (made >= 20) return reply(403, { error: { message: 'Calendar usage limits exceeded.', errors: [{ reason: 'calendarUsageLimitsExceeded' }] } });
+    made++;
+    return reply(200, { id: `ev${made}` });
+  };
+  const store2 = h2.api.state.routine.google;
+  let stopped = null;
+  try { await c2.syncGoogleCalendar({ fetchFn: pauses, token: 't', desired: c2.routineDesiredEvents('2026-11-17'), store: store2, todayDate: '2026-11-17' }); } catch (error) { stopped = error; }
+  r2.check('a Google pause stops the send with a plain reason', stopped && stopped.reason === 'calendarUsageLimitsExceeded' && /Try again in an hour/.test(stopped.message));
+  r2.check('what was sent before the pause is kept', Object.keys(store2.events).length === 20);
+  r2.check('it stops instead of hammering Google', made === 20);
+  const resumed = await c2.syncGoogleCalendar({ fetchFn: async (url, options) => reply(200, { id: url.endsWith('/calendars') ? 'cal' : `n${Math.random()}` }), token: 't', desired: c2.routineDesiredEvents('2026-11-17'), store: store2, todayDate: '2026-11-17' });
+  r2.check('the next send carries on from where it stopped', resumed.created === c2.routineDesiredEvents('2026-11-17').length - 20);
+  r2.done();
+})();
