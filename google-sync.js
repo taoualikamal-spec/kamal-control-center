@@ -82,7 +82,7 @@ async function syncGoogleCalendar({ fetchFn, token, desired, store, todayDate, o
   const encode = encodeURIComponent;
   if (store.calendarId) {
     try { await googleRequest(fetchFn, token, 'GET', `/calendars/${encode(store.calendarId)}`); }
-    catch (error) { if (error.status === 404 || error.status === 410) { store.calendarId = ''; store.events = {}; } else throw error; }
+    catch (error) { if (error.status === 403 || error.status === 404 || error.status === 410) { store.calendarId = ''; store.events = {}; } else throw error; }
   }
   if (!store.calendarId) {
     const calendar = await googleRequest(fetchFn, token, 'POST', '/calendars', { summary: 'Up Again', description: 'Your routine and prayer times, from the Up Again app.', timeZone: ROUTINE_TZ });

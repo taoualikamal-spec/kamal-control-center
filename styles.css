@@ -709,3 +709,6 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 @media (max-width: 580px) {
   .routine-list li, .routine-item-head { grid-template-columns: 78px minmax(0, 1fr) auto; }
 }
+
+.google-links { display: flex; flex-wrap: wrap; gap: 16px; }
+.cancel-client { width: 100%; text-align: center; }

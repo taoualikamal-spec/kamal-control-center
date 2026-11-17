@@ -1218,6 +1218,7 @@ function handleHomeDelete(event) {
    the reminders to the phone. Notes on the money moments carry the numbers
    as they were at the last sync. */
 let openRoutineId = null;
+let changingGoogleClient = false;
 
 function routineAppUrl() {
   return typeof location !== 'undefined' && /^https?:/.test(location.protocol) ? `${location.origin}${location.pathname}` : '';
@@ -1308,7 +1309,9 @@ function renderRoutine() {
 
   const google = routine.google;
   const clientId = googleClientId(routine);
-  $('#googleClientForm').hidden = Boolean(clientId);
+  $('#googleClientForm').hidden = Boolean(clientId) && !changingGoogleClient;
+  $('#googleCancelClient').hidden = !changingGoogleClient;
+  $('#googleChangeClient').hidden = !google.clientId || GOOGLE_CLIENT_ID !== '' || changingGoogleClient;
   $('#googleSyncButton').hidden = !clientId;
   $('#googleForget').hidden = !google.calendarId;
   $('#googleClientInput').value = google.clientId;
@@ -1417,11 +1420,21 @@ function savePrayerPlace(event) {
   saveState(); renderRoutine(); toast('Prayer times moved. Send to Google Calendar to update the reminders.');
 }
 
+// A different client is a different app to Google: start clean with it.
+function setGoogleClientId(value) {
+  const google = state.routine.google;
+  if (google.clientId === value) return false;
+  forgetGoogleToken();
+  Object.assign(google, { clientId: value, calendarId: '', events: {}, lastSync: '', prayersUntil: '' });
+  return true;
+}
+
 function saveGoogleClient(event) {
   event.preventDefault();
   const value = $('#googleClientInput').value.trim();
   if (!/\.apps\.googleusercontent\.com$/.test(value)) { toast('That does not look like a Google client ID. It ends in .apps.googleusercontent.com'); return; }
-  state.routine.google.clientId = value;
+  setGoogleClientId(value);
+  changingGoogleClient = false;
   saveState(); renderRoutine(); toast('Saved. Now tap Connect.');
 }
 
@@ -2818,6 +2831,8 @@ function registerEvents() {
   });
   $('#prayerPlaceForm').addEventListener('submit', savePrayerPlace);
   $('#googleClientForm').addEventListener('submit', saveGoogleClient);
+  $('#googleChangeClient').addEventListener('click', () => { changingGoogleClient = true; renderRoutine(); $('#googleClientInput').focus(); });
+  $('#googleCancelClient').addEventListener('click', () => { changingGoogleClient = false; renderRoutine(); });
   $('#googleSyncButton').addEventListener('click', sendRoutineToGoogle);
   $('#googleForget').addEventListener('click', forgetGoogle);
   ['#paybackList', '#paybackSeparate'].forEach(selector => {

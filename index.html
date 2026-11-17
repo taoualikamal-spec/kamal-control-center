@@ -426,12 +426,13 @@
             <div id="googleSetup">
               <label>Google client ID<input id="googleClientInput" autocomplete="off" spellcheck="false" placeholder="1234-abc.apps.googleusercontent.com"></label>
               <button class="secondary-button full-width" type="submit">Save</button>
+              <button class="text-button cancel-client" id="googleCancelClient" type="button">Cancel</button>
             </div>
           </form>
           <button class="primary-button full-width" id="googleSyncButton" type="button" hidden>Connect and send to Google Calendar</button>
           <p class="small-note payback-tight" id="googleProgress"></p>
           <p class="small-note payback-tight">The app makes its own "Up Again" calendar and can only touch that one, never your other events. Prayer times go in 30 days at a time; send again within a month. Edits to the routine reach Google when you send.</p>
-          <button class="text-button" id="googleForget" type="button" hidden>Stop sending to Google</button>
+          <div class="google-links"><button class="text-button" id="googleChangeClient" type="button" hidden>Change the client ID</button><button class="text-button" id="googleForget" type="button" hidden>Stop sending to Google</button></div>
         </section>
 
         <section class="panel">

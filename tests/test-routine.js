@@ -156,6 +156,13 @@ function fakeGoogle() {
   const items = messy.api.state.routine.items;
   check('messy saved routines are cleaned on load', items.length === 1 && items[0].days.join() === '3' && messy.api.state.routine.prayers.on.fajr === false && messy.api.state.routine.prayers.on.isha === true);
 
+  // Changing the Google client ID starts clean.
+  const g = load();
+  const gr = g.api.state.routine.google;
+  Object.assign(gr, { clientId: 'old.apps.googleusercontent.com', calendarId: 'cal1', events: { 'routine:wake': { id: 'x', sig: 's' } }, lastSync: '2026-11-17T10:00:00Z' });
+  check('saving the same client ID changes nothing', g.ctx.setGoogleClientId('old.apps.googleusercontent.com') === false && gr.calendarId === 'cal1');
+  check('a new client ID forgets the old calendar and events', g.ctx.setGoogleClientId('new.apps.googleusercontent.com') === true && gr.clientId === 'new.apps.googleusercontent.com' && gr.calendarId === '' && Object.keys(gr.events).length === 0);
+
   const nav = load();
   nav.ctx.showTab('month');
   nav.ctx.selectTab('routine');
