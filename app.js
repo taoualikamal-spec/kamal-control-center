@@ -1394,11 +1394,12 @@ async function sendRoutineToGoogle() {
   setRoutineProgress('Opening Google…');
   try {
     const token = await getGoogleToken(clientId, !routine.google.calendarId);
-    setRoutineProgress('Sending…');
+    setRoutineProgress('Checking what is already in Google…');
     const date = today();
     const result = await syncGoogleCalendar({
       fetchFn: (...args) => fetch(...args), token, desired: routineDesiredEvents(date), store: routine.google, todayDate: date,
-      onProgress: (done, total) => { setRoutineProgress(`Sending ${done} of ${total}… keep this screen open.`); if (done % 10 === 0) saveState(); }
+      onProgress: (done, total) => { setRoutineProgress(`Sending ${done} of ${total}… keep this screen open.`); if (done % 10 === 0) saveState(); },
+      onSave: () => saveState()
     });
     routine.google.lastSync = new Date().toISOString();
     routine.google.prayersUntil = addDays(date, PRAYER_DAYS_AHEAD - 1);
@@ -1407,7 +1408,12 @@ async function sendRoutineToGoogle() {
     setRoutineProgress('');
     renderRoutine();
     const changed = result.created + result.updated + result.removed;
-    toast(changed ? `Google Calendar is up to date (${changed} ${changed === 1 ? 'change' : 'changes'}).` : 'Google Calendar was already up to date.');
+    const cleaned = [
+      result.duplicates ? `${result.duplicates} ${result.duplicates === 1 ? 'copy' : 'copies'} removed` : '',
+      result.extraCalendars > 0 ? `${result.extraCalendars} extra Up Again ${result.extraCalendars === 1 ? 'calendar' : 'calendars'} removed` : ''
+    ].filter(Boolean).join(', ');
+    toast(`${changed ? `Google Calendar is up to date (${changed} ${changed === 1 ? 'change' : 'changes'})` : 'Google Calendar was already up to date'}${cleaned ? `. ${cleaned}` : ''}.`);
+    if (result.extraCalendars < 0) setRoutineProgress('If you still see more than one "Up Again" calendar in Google Calendar, delete the extras there: Settings, the calendar, Remove calendar. The app keeps only one.');
   } catch (error) {
     if (error.status === 401) googleToken = null;
     const sent = Object.keys(routine.google.events).length;

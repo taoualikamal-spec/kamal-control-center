@@ -91,25 +91,28 @@ const near = (moment, clock) => Math.abs((Date.parse(`2000-01-01T${utc(moment)}:
 
 // A fake Google Calendar that keeps what it is sent.
 function fakeGoogle() {
-  const calendars = {}; const log = [];
+  const calendars = {}; const meta = {}; const log = [];
   let n = 0;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
   const fetchFn = async (url, options) => {
-    const path = url.replace('https://www.googleapis.com/calendar/v3', '');
+    const path = url.replace('https://www.googleapis.com/calendar/v3', '').split('?')[0];
     const body = options.body ? JSON.parse(options.body) : null;
     log.push(`${options.method} ${path.split('/').slice(0, 4).join('/')}`);
-    if (options.method === 'POST' && path === '/calendars') { const id = `cal${++n}`; calendars[id] = {}; return reply(200, { id }); }
+    if (options.method === 'POST' && path === '/calendars') { const id = `cal${++n}`; calendars[id] = {}; meta[id] = body; return reply(200, { id }); }
+    if (options.method === 'GET' && path === '/users/me/calendarList') return reply(200, { items: Object.keys(calendars).map(id => ({ id, ...meta[id] })) });
     const [, , calId, , eventId] = path.split('/').map(decodeURIComponent);
     const cal = calendars[calId];
     if (!cal) return reply(404, { error: { message: 'Not Found' } });
+    if (options.method === 'DELETE' && path.split('/').length === 3) { delete calendars[calId]; return reply(204, null); }
     if (options.method === 'GET' && !eventId && path.split('/').length === 3) return reply(200, { id: calId });
+    if (options.method === 'GET' && !eventId) return reply(200, { items: Object.entries(cal).map(([id, event]) => ({ id, extendedProperties: event.extendedProperties })) });
     if (options.method === 'POST') { const id = `ev${++n}`; cal[id] = body; return reply(200, { id }); }
     if (!cal[eventId]) return reply(404, { error: { message: 'Not Found' } });
     if (options.method === 'PUT') { cal[eventId] = body; return reply(200, { id: eventId }); }
     if (options.method === 'DELETE') { delete cal[eventId]; return reply(204, null); }
     return reply(400, {});
   };
-  return { fetchFn, calendars, log };
+  return { fetchFn, calendars, meta, log };
 }
 
 (async () => {
@@ -181,6 +184,7 @@ function fakeGoogle() {
   let calls = 0, inserts = 0;
   const reply = (status, body) => ({ ok: status < 400, status, json: async () => body });
   const slowThenFine = async (url, options) => {
+    if (options.method === 'GET') return reply(200, { items: [] });
     calls++;
     if (options.method === 'POST' && url.endsWith('/calendars')) return reply(200, { id: 'cal' });
     if (calls % 3 === 0) return reply(429, { error: { message: 'Rate Limit Exceeded', errors: [{ reason: 'rateLimitExceeded' }] } });
@@ -196,10 +200,13 @@ function fakeGoogle() {
   const c2 = h2.ctx;
   c2.googleTiming.wait = async () => {};
   let made = 0;
+  const sentIds = [];
   const pauses = async (url, options) => {
+    if (options.method === 'GET') return reply(200, { items: [] });
     if (options.method === 'POST' && url.endsWith('/calendars')) return reply(200, { id: 'cal' });
     if (made >= 20) return reply(403, { error: { message: 'Calendar usage limits exceeded.', errors: [{ reason: 'calendarUsageLimitsExceeded' }] } });
     made++;
+    sentIds.push(`ev${made}`);
     return reply(200, { id: `ev${made}` });
   };
   const store2 = h2.api.state.routine.google;
@@ -208,7 +215,33 @@ function fakeGoogle() {
   r2.check('a Google pause stops the send with a plain reason', stopped && stopped.reason === 'calendarUsageLimitsExceeded' && /Try again in an hour/.test(stopped.message));
   r2.check('what was sent before the pause is kept', Object.keys(store2.events).length === 20);
   r2.check('it stops instead of hammering Google', made === 20);
-  const resumed = await c2.syncGoogleCalendar({ fetchFn: async (url, options) => reply(200, { id: url.endsWith('/calendars') ? 'cal' : `n${Math.random()}` }), token: 't', desired: c2.routineDesiredEvents('2026-11-17'), store: store2, todayDate: '2026-11-17' });
+  const held = Object.entries(store2.events).map(([key, value]) => ({ id: value.id, extendedProperties: { private: { upAgain: key } } }));
+  const resumed = await c2.syncGoogleCalendar({ fetchFn: async (url, options) => options.method === 'GET' ? reply(200, url.includes('/events') ? { items: held } : { items: [] }) : reply(200, { id: url.endsWith('/calendars') ? 'cal' : `n${Math.random()}` }), token: 't', desired: c2.routineDesiredEvents('2026-11-17'), store: store2, todayDate: '2026-11-17' });
   r2.check('the next send carries on from where it stopped', resumed.created === c2.routineDesiredEvents('2026-11-17').length - 20);
+
+  // What happened on the phone: sends cut off before saving left copies and a
+  // second calendar in Google. The next send cleans it all up.
+  const g = fakeGoogle();
+  const h3 = loadAgain();
+  const c3 = h3.ctx;
+  c3.googleTiming.wait = async () => {};
+  const lostStore = () => ({ clientId: '', calendarId: '', events: {}, lastSync: '', prayersUntil: '', lastError: '' });
+  const firstTry = lostStore();
+  await c3.syncGoogleCalendar({ fetchFn: g.fetchFn, token: 't', desired: c3.routineDesiredEvents('2026-11-17'), store: firstTry, todayDate: '2026-11-17' });
+  const secondTry = { ...lostStore(), calendarId: firstTry.calendarId }; // calendar saved, events lost
+  const keepCal = firstTry.calendarId;
+  // Simulate the old app: events sent again without knowing, then another calendar.
+  for (const item of c3.routineDesiredEvents('2026-11-17').slice(0, 40)) g.calendars[keepCal][`dup${Math.random()}`] = item.event;
+  g.calendars.calOld = { a: { extendedProperties: { private: { upAgain: 'routine:wake' } } } };
+  g.meta.calOld = { summary: 'Up Again', description: 'Your routine and prayer times, from the Up Again app.' };
+  g.calendars.mine = {}; g.meta.mine = { summary: 'Work', description: 'My own calendar' };
+  g.calendars[keepCal].handmade = { summary: 'Dentist' };
+  const cleaned = await c3.syncGoogleCalendar({ fetchFn: g.fetchFn, token: 't', desired: c3.routineDesiredEvents('2026-11-17'), store: secondTry, todayDate: '2026-11-17' });
+  const tags = Object.values(g.calendars[keepCal]).map(event => event.extendedProperties && event.extendedProperties.private.upAgain).filter(Boolean);
+  r2.check('copies in the calendar are removed', cleaned.duplicates === 40 && tags.length === new Set(tags).size);
+  r2.check('every reminder is there exactly once', tags.length === c3.routineDesiredEvents('2026-11-17').length);
+  r2.check('events it had lost track of are taken back, not sent again', cleaned.created === 0);
+  r2.check('an extra Up Again calendar is removed', cleaned.extraCalendars === 1 && !g.calendars.calOld);
+  r2.check('your own calendars and events are never touched', Boolean(g.calendars.mine) && Boolean(g.calendars[keepCal].handmade));
   r2.done();
 })();

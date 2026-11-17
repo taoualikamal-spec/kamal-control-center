@@ -110,20 +110,81 @@ async function runLimited(jobs, limit = 2) {
   return results;
 }
 
+const UP_AGAIN_CALENDAR = { summary: 'Up Again', description: 'Your routine and prayer times, from the Up Again app.' };
+
+/* Other "Up Again" calendars this app made (from sends that were cut off
+   before the phone saved them). Only calendars with this app's exact name
+   and description are touched. Returns how many were removed, or -1 when
+   Google does not let the app see the calendar list. */
+async function removeExtraCalendars(fetchFn, token, keepId) {
+  let list;
+  try { list = await googleRequest(fetchFn, token, 'GET', '/users/me/calendarList?maxResults=250&fields=items(id,summary,description)'); }
+  catch (error) { if (error.status === 401) throw error; return -1; }
+  let removed = 0;
+  for (const calendar of (list && list.items) || []) {
+    if (calendar.id === keepId || calendar.summary !== UP_AGAIN_CALENDAR.summary || calendar.description !== UP_AGAIN_CALENDAR.description) continue;
+    try { await googleRequest(fetchFn, token, 'DELETE', `/calendars/${encodeURIComponent(calendar.id)}`); removed++; }
+    catch (error) { if (error.status === 401) throw error; }
+  }
+  return removed;
+}
+
+/* Reads every event in the Up Again calendar and matches them to the app's
+   own list by their hidden tag: one is kept for each tag, copies are
+   deleted, and events the phone had lost track of are taken back instead
+   of being sent again. Events without a tag (added by hand) are left alone. */
+async function reconcileGoogleEvents(fetchFn, token, store) {
+  const cal = `/calendars/${encodeURIComponent(store.calendarId)}/events`;
+  const found = [];
+  let pageToken = '';
+  do {
+    const page = await googleRequest(fetchFn, token, 'GET', `${cal}?maxResults=2500&showDeleted=false&fields=items(id,extendedProperties),nextPageToken${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`);
+    found.push(...((page && page.items) || []));
+    pageToken = (page && page.nextPageToken) || '';
+  } while (pageToken);
+  const byKey = new Map();
+  found.forEach(event => {
+    const key = event.extendedProperties && event.extendedProperties.private && event.extendedProperties.private.upAgain;
+    if (!key) return;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(event.id);
+  });
+  const extra = [];
+  byKey.forEach((ids, key) => {
+    const known = store.events[key];
+    const keep = known && ids.includes(known.id) ? known.id : ids[0];
+    // Taken back with an empty signature, so the next step rewrites it to match the app.
+    if (!known || known.id !== keep) store.events[key] = { id: keep, sig: '' };
+    ids.filter(id => id !== keep).forEach(id => extra.push(id));
+  });
+  // Remembered but gone from Google: forget, so it is made again.
+  Object.keys(store.events).forEach(key => { if (!byKey.has(key)) delete store.events[key]; });
+  await runLimited(extra.map(id => async () => {
+    try { await googleRequest(fetchFn, token, 'DELETE', `${cal}/${encodeURIComponent(id)}`); }
+    catch (error) { if (error.status !== 404 && error.status !== 410) throw error; }
+  }));
+  return extra.length;
+}
+
 /* Brings the Up Again calendar in line with `desired` ({key, event, sig}[]).
    `store` is routine.google; it is updated in place with what was sent.
+   `onSave` is called whenever there is something worth keeping right away.
    Returns counts of what changed. */
-async function syncGoogleCalendar({ fetchFn, token, desired, store, todayDate, onProgress = () => {} }) {
+async function syncGoogleCalendar({ fetchFn, token, desired, store, todayDate, onProgress = () => {}, onSave = () => {} }) {
   const encode = encodeURIComponent;
   if (store.calendarId) {
     try { await googleRequest(fetchFn, token, 'GET', `/calendars/${encode(store.calendarId)}`); }
     catch (error) { if (error.status === 403 || error.status === 404 || error.status === 410) { store.calendarId = ''; store.events = {}; } else throw error; }
   }
   if (!store.calendarId) {
-    const calendar = await googleRequest(fetchFn, token, 'POST', '/calendars', { summary: 'Up Again', description: 'Your routine and prayer times, from the Up Again app.', timeZone: ROUTINE_TZ });
+    const calendar = await googleRequest(fetchFn, token, 'POST', '/calendars', { ...UP_AGAIN_CALENDAR, timeZone: ROUTINE_TZ });
     store.calendarId = calendar.id;
     store.events = {};
+    onSave(); // saved at once: a send cut off now must never make a second calendar
   }
+  const extraCalendars = await removeExtraCalendars(fetchFn, token, store.calendarId);
+  const duplicates = await reconcileGoogleEvents(fetchFn, token, store);
+  onSave();
   const cal = `/calendars/${encode(store.calendarId)}/events`;
   const plan = syncPlan(desired, store.events, todayDate);
   const total = plan.create.length + plan.update.length + plan.remove.length;
@@ -156,5 +217,5 @@ async function syncGoogleCalendar({ fetchFn, token, desired, store, todayDate, o
   ];
   plan.forget.forEach(key => { delete store.events[key]; });
   await runLimited(jobs);
-  return { created: plan.create.length, updated: plan.update.length, removed: plan.remove.length };
+  return { created: plan.create.length, updated: plan.update.length, removed: plan.remove.length, duplicates, extraCalendars };
 }
