@@ -61,6 +61,7 @@ function defaultState() {
     bills: [],
     payback: [],
     home: normalizeHome(null),
+    routine: normalizeRoutine(null),
     days: {},
     months: {},
     years: {},
@@ -129,6 +130,7 @@ function loadState() {
     stored.bills = normalizeBills(stored.bills);
     stored.payback = normalizePayback(stored.payback);
     stored.home = normalizeHome(stored.home);
+    stored.routine = normalizeRoutine(stored.routine);
     stored.days ||= {};
     stored.dismissedInsights ||= [];
     stored.months ||= {};
@@ -1209,6 +1211,227 @@ function handleHomeDelete(event) {
   if (removeHomeEntry(button.dataset.homeDelete, button.dataset.id)) { saveState(); renderAll(); }
 }
 
+/* ---------- Routine ----------
+   The same day, every day: wake, work, meals, prayers, and the moments that
+   keep the money true (log hours, write down the money, the week check,
+   home on the 1st). The routine lives here; Google Calendar only carries
+   the reminders to the phone. Notes on the money moments carry the numbers
+   as they were at the last sync. */
+let openRoutineId = null;
+
+function routineAppUrl() {
+  return typeof location !== 'undefined' && /^https?:/.test(location.protocol) ? `${location.origin}${location.pathname}` : '';
+}
+
+function routineLiveNote(kind, date = today()) {
+  const asOf = `As of ${dateLabel(date)}`;
+  const home = homeSummary(date);
+  const next = paybackSummary().next;
+  if (kind === 'hours') return home.target ? `${asOf}: ${home.weekHours} of ${home.weeklyHours} h this week.` : '';
+  if (kind === 'week') return [
+    home.target ? `${asOf}: ${home.weekHours} of ${home.weeklyHours} h this week, ${Math.min(home.blockDone, home.blockHours)} of ${home.blockHours} h toward the next payment.` : '',
+    'Got paid? Add it in Money in and tick "This pays a block of work hours".',
+    next ? `Next on Pay back: ${next.name}, ${money(paybackLeftOf(next))} left.` : ''
+  ].filter(Boolean).join(' ');
+  if (kind === 'money') return `${asOf}: ${money(totalIncome(date))} in and ${money(monthSpentTotal(date))} out this month.`;
+  if (kind === 'home') return home.target ? `${asOf}: ${money(home.ready)} of ${money(home.need)} ready for ${homeDueLabel(home.dueDate)}.` : '';
+  if (kind === 'send') return home.target ? `${money(home.target)} goes home on the 1st, before anyone else.` : '';
+  return '';
+}
+
+function routineDesiredEvents(date = today()) {
+  const routine = state.routine;
+  const appUrl = routineAppUrl();
+  return [
+    ...routine.items.map(item => routineEvent(item, { fromDate: date, appUrl, liveNote: routineLiveNote(item.live, date) })),
+    ...prayerEvents(routine, date)
+  ];
+}
+
+// Where the day is now: the next thing on the plan, and the one after.
+function routineNow(date = today(), clock = clockInZone(new Date())) {
+  const rows = dayPlan(state.routine, date);
+  const wake = state.routine.items.find(item => item.id === 'wake');
+  const dayStart = wake ? routineMinutes(wake.start) - 180 : 0;
+  const order = value => (routineMinutes(value) - dayStart + 1440) % 1440;
+  const nextIndex = rows.findIndex(row => order(row.start) >= order(clock));
+  return { rows, nextIndex, next: rows[nextIndex] || null, after: rows[nextIndex + 1] || null, clock };
+}
+
+function routineFormHtml(item, isNew) {
+  const id = isNew ? 'new' : item.id;
+  const dayChecks = ROUTINE_DAYS.map(day => `<label class="day-chip"><input type="checkbox" name="day" value="${day.n}" ${item.days.includes(day.n) ? 'checked' : ''}><span>${day.short}</span></label>`).join('');
+  const pages = [['', 'Nothing'], ['day', 'Today'], ['month', 'Money'], ['home', 'Home first'], ['payback', 'Pay back'], ['time', 'Time'], ['body', 'Waiting']];
+  return `<form class="routine-form form-stack" data-routine-form="${id}">
+    <label>What<input name="title" maxlength="80" required value="${escapeHtml(item.title)}" placeholder="Gym, call home, read..."></label>
+    <div class="form-row"><label>Starts<input name="start" type="time" required value="${item.start}"></label><label>Ends <span class="optional">you can skip this</span><input name="end" type="time" value="${item.end}"></label></div>
+    <div><p class="chip-label">Which days</p><div class="day-chips">${dayChecks}</div></div>
+    <label>Or once a month, on day <span class="optional">1–28, leave empty for the days above</span><input name="monthDay" type="number" inputmode="numeric" min="0" max="28" step="1" value="${item.monthDay || ''}"></label>
+    <label>Open in the app<select name="page">${pages.map(([value, label]) => `<option value="${value}" ${item.page === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+    <label>Note <span class="optional">shows in the reminder</span><input name="note" maxlength="300" value="${escapeHtml(item.note)}"></label>
+    <div class="routine-form-actions"><button class="secondary-button" type="submit">${isNew ? 'Add to the routine' : 'Save'}</button>${isNew ? '' : `<button class="delete-text" type="button" data-routine-delete="${item.id}">Remove</button>`}</div>
+  </form>`;
+}
+
+function renderRoutineEntry() {
+  const entry = $('#routineEntrySummary');
+  if (!entry) return;
+  const now = routineNow();
+  entry.innerHTML = now.next
+    ? `Next: <b>${escapeHtml(now.next.title)}</b> at ${now.next.start}${now.after ? ` · then ${escapeHtml(now.after.title)} ${now.after.start}` : ''}`
+    : 'The day is done. Tomorrow starts at the same time.';
+}
+
+function renderRoutine() {
+  renderRoutineEntry();
+  if (!$('#routineToday')) return;
+  const routine = state.routine;
+  const now = routineNow();
+  $('#routineToday').innerHTML = now.rows.map((row, index) => `<li class="${index < now.nextIndex || now.nextIndex < 0 ? 'past' : ''} ${index === now.nextIndex ? 'next' : ''} ${row.kind}">
+      <span class="routine-time">${row.start}${row.end ? `–${row.end}` : ''}</span><b>${escapeHtml(row.title)}</b>${row.page ? `<button class="text-button" type="button" data-open-tab="${row.page}">Open</button>` : ''}
+    </li>`).join('') || '<li>Nothing planned today.</li>';
+
+  const wakeItem = routine.items.find(item => item.id === 'wake');
+  const fromWake = clock => (routineMinutes(clock) - (wakeItem ? routineMinutes(wakeItem.start) - 180 : 0) + 1440) % 1440;
+  $('#routineItems').innerHTML = [...routine.items].sort((a, b) => (Boolean(a.monthDay) - Boolean(b.monthDay)) || (a.monthDay - b.monthDay) || (fromWake(a.start) - fromWake(b.start))).map(item => `<div class="routine-item ${openRoutineId === item.id ? 'open' : ''}">
+      <div class="routine-item-head"><span class="routine-time">${item.start}${item.end ? `–${item.end}` : ''}</span><span class="routine-item-main"><b>${escapeHtml(item.title)}</b><small>${routineDaysLabel(item)}</small></span><button class="payback-more" type="button" data-routine-open="${item.id}">${openRoutineId === item.id ? 'Close' : 'Edit'}</button></div>
+      ${openRoutineId === item.id ? routineFormHtml(item, false) : ''}
+    </div>`).join('');
+  $('#routineAddWrap').innerHTML = routineFormHtml({ id: 'new', title: '', start: '', end: '', days: [...EVERY_DAY], monthDay: 0, page: '', note: '' }, true);
+
+  const times = prayerTimes(today(), routine.prayers.lat, routine.prayers.lng);
+  $('#prayerToggles').innerHTML = PRAYERS.map(p => `<label class="check-row"><input type="checkbox" data-prayer-toggle="${p.id}" ${routine.prayers.on[p.id] ? 'checked' : ''}><span>${p.name}<small>Today at ${clockInZone(times[p.id])}</small></span></label>`).join('');
+  $('#prayerPlaceNote').textContent = `${routine.prayers.city}, Ministry of Habous method. Calculated on this phone; your mosque may differ by a minute or two.`;
+  $('#prayerCity').value = routine.prayers.city;
+  $('#prayerLat').value = routine.prayers.lat;
+  $('#prayerLng').value = routine.prayers.lng;
+
+  const google = routine.google;
+  const clientId = googleClientId(routine);
+  $('#googleClientForm').hidden = Boolean(clientId);
+  $('#googleSyncButton').hidden = !clientId;
+  $('#googleForget').hidden = !google.calendarId;
+  $('#googleClientInput').value = google.clientId;
+  const daysLeft = google.prayersUntil ? Math.round((Date.parse(google.prayersUntil) - Date.parse(today())) / 86400000) : -1;
+  $('#googleStatus').textContent = !clientId ? 'Google sign-in is not set up yet. Paste the client ID below once.'
+    : !google.calendarId ? 'Not sent yet. One tap creates an "Up Again" calendar in your Google account with every reminder.'
+    : `Last sent ${dateLabel(google.lastSync.slice(0, 10))}. ${daysLeft >= 0 ? `Prayer times are in the calendar until ${dateLabel(google.prayersUntil)}.` : 'Prayer times have run out. Send again.'}`;
+  $('#googleSyncButton').textContent = google.calendarId ? 'Send changes to Google Calendar' : 'Connect and send to Google Calendar';
+  const nudge = $('#routineSyncNudge');
+  if (nudge) nudge.hidden = !(google.calendarId && daysLeft >= 0 && daysLeft < 7);
+  if (clientId) loadGoogleScript().catch(() => {});
+}
+
+function readRoutineForm(form) {
+  const days = [...form.querySelectorAll('input[name="day"]:checked')].map(input => Number(input.value));
+  return {
+    title: form.elements.title.value.trim(),
+    start: form.elements.start.value,
+    end: form.elements.end.value || '',
+    days,
+    monthDay: Math.min(28, Math.max(0, Math.round(Number(form.elements.monthDay.value) || 0))),
+    page: form.elements.page.value,
+    note: form.elements.note.value.trim()
+  };
+}
+
+function saveRoutineItem(id, fields) {
+  if (!fields.title || !/^\d{2}:\d{2}$/.test(fields.start) || (!fields.monthDay && !fields.days.length)) return null;
+  let item = state.routine.items.find(entry => entry.id === id);
+  if (item) Object.assign(item, fields);
+  else { item = { id: makeId(), live: '', ...fields }; state.routine.items.push(item); }
+  item.days = [...new Set(item.days)].sort();
+  if (item.id === 'wake') state.settings.wakeTarget = item.start;
+  return item;
+}
+
+function removeRoutineItem(id) {
+  const before = state.routine.items.length;
+  state.routine.items = state.routine.items.filter(item => item.id !== id);
+  return state.routine.items.length < before;
+}
+
+function handleRoutineSubmit(event) {
+  const form = event.target.closest('[data-routine-form]');
+  if (!form) return;
+  event.preventDefault();
+  const id = form.dataset.routineForm;
+  const item = saveRoutineItem(id, readRoutineForm(form));
+  if (!item) { toast('It needs a name, a start time, and at least one day.'); return; }
+  openRoutineId = null;
+  saveState(); renderRoutine();
+  toast(`${item.title}, ${routineDaysLabel(item)} at ${item.start}. Send it to Google Calendar to get the reminder.`);
+}
+
+function handleRoutineClick(event) {
+  const opener = event.target.closest('[data-routine-open]');
+  if (opener) { openRoutineId = openRoutineId === opener.dataset.routineOpen ? null : opener.dataset.routineOpen; renderRoutine(); return; }
+  const remove = event.target.closest('[data-routine-delete]');
+  if (remove) {
+    const item = state.routine.items.find(entry => entry.id === remove.dataset.routineDelete);
+    if (!item || !confirm(`Remove "${item.title}" from your routine?`)) return;
+    removeRoutineItem(item.id); openRoutineId = null; saveState(); renderRoutine();
+    toast('Removed. Its reminder goes at the next send.');
+  }
+}
+
+function setRoutineProgress(text) { $('#googleProgress').textContent = text; }
+
+async function sendRoutineToGoogle() {
+  const routine = state.routine;
+  const clientId = googleClientId(routine);
+  if (!clientId) { toast('Paste the Google client ID first.'); return; }
+  const button = $('#googleSyncButton');
+  button.disabled = true;
+  setRoutineProgress('Opening Google…');
+  try {
+    const token = await getGoogleToken(clientId, !routine.google.calendarId);
+    setRoutineProgress('Sending…');
+    const date = today();
+    const result = await syncGoogleCalendar({
+      fetchFn: (...args) => fetch(...args), token, desired: routineDesiredEvents(date), store: routine.google, todayDate: date,
+      onProgress: (done, total) => setRoutineProgress(`Sending ${done} of ${total}…`)
+    });
+    routine.google.lastSync = new Date().toISOString();
+    routine.google.prayersUntil = addDays(date, PRAYER_DAYS_AHEAD - 1);
+    saveState();
+    setRoutineProgress('');
+    renderRoutine();
+    const changed = result.created + result.updated + result.removed;
+    toast(changed ? `Google Calendar is up to date (${changed} ${changed === 1 ? 'change' : 'changes'}).` : 'Google Calendar was already up to date.');
+  } catch (error) {
+    if (error.status === 401) googleToken = null;
+    saveState(); // keep whatever was sent, so the next tap carries on from there
+    setRoutineProgress('');
+    toast(`Not finished: ${error.message} Tap again to carry on.`);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function savePrayerPlace(event) {
+  event.preventDefault();
+  const lat = Number($('#prayerLat').value), lng = Number($('#prayerLng').value);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 66 || Math.abs(lng) > 180) { toast('Check the latitude and longitude.'); return; }
+  Object.assign(state.routine.prayers, { city: $('#prayerCity').value.trim() || 'My city', lat, lng });
+  saveState(); renderRoutine(); toast('Prayer times moved. Send to Google Calendar to update the reminders.');
+}
+
+function saveGoogleClient(event) {
+  event.preventDefault();
+  const value = $('#googleClientInput').value.trim();
+  if (!/\.apps\.googleusercontent\.com$/.test(value)) { toast('That does not look like a Google client ID. It ends in .apps.googleusercontent.com'); return; }
+  state.routine.google.clientId = value;
+  saveState(); renderRoutine(); toast('Saved. Now tap Connect.');
+}
+
+function forgetGoogle() {
+  if (!confirm('Stop sending to Google Calendar from this phone? The "Up Again" calendar stays in Google; delete it there if you do not want it.')) return;
+  forgetGoogleToken();
+  Object.assign(state.routine.google, { calendarId: '', events: {}, lastSync: '', prayersUntil: '' });
+  saveState(); renderRoutine(); toast('Disconnected.');
+}
+
 function daysInMonth(key) {
   const [year, month] = key.split('-').map(Number);
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -2117,6 +2340,7 @@ function renderAll() {
   renderBody();
   renderHome();
   renderPayback();
+  renderRoutine();
   renderSettings();
 }
 
@@ -2468,7 +2692,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.payback = normalizePayback(state.payback); state.home = normalizeHome(state.home); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.payback = normalizePayback(state.payback); state.home = normalizeHome(state.home); state.routine = normalizeRoutine(state.routine); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';
@@ -2499,10 +2723,10 @@ function deleteCraving(id) {
    Every move is a real history entry, so the phone's back button goes back
    through the app instead of leaving it. The address also names the page,
    so a refresh stays put. */
-const TABS = ['day', 'month', 'year', 'time', 'body', 'home', 'payback', 'settings'];
+const TABS = ['day', 'month', 'year', 'time', 'body', 'routine', 'home', 'payback', 'settings'];
 // Time and Waiting are opened from Day, and Home and Pay back from Month. None is its
 // own tab, so the tab they came from stays lit while you are inside them.
-const TAB_PARENT = { time: 'day', body: 'day', home: 'month', payback: 'month' };
+const TAB_PARENT = { time: 'day', body: 'day', routine: 'day', home: 'month', payback: 'month' };
 const scrollMemory = {};
 
 function tabFromHash() {
@@ -2581,6 +2805,21 @@ function registerEvents() {
   $('#homeHoursForm').addEventListener('submit', homeLogHours);
   $('#homeSentForm').addEventListener('submit', homeSend);
   $('#homeActivity').addEventListener('click', handleHomeDelete);
+  ['#routineItems', '#routineAddWrap'].forEach(selector => {
+    $(selector).addEventListener('submit', handleRoutineSubmit);
+    $(selector).addEventListener('click', handleRoutineClick);
+  });
+  $('#routineToday').addEventListener('click', event => { const open = event.target.closest('[data-open-tab]'); if (open) selectTab(open.dataset.openTab); });
+  $('#prayerToggles').addEventListener('change', event => {
+    const box = event.target.closest('[data-prayer-toggle]');
+    if (!box) return;
+    state.routine.prayers.on[box.dataset.prayerToggle] = box.checked;
+    saveState(); renderRoutine();
+  });
+  $('#prayerPlaceForm').addEventListener('submit', savePrayerPlace);
+  $('#googleClientForm').addEventListener('submit', saveGoogleClient);
+  $('#googleSyncButton').addEventListener('click', sendRoutineToGoogle);
+  $('#googleForget').addEventListener('click', forgetGoogle);
   ['#paybackList', '#paybackSeparate'].forEach(selector => {
     $(selector).addEventListener('click', handlePaybackClick);
     $(selector).addEventListener('change', handlePaybackToggle);

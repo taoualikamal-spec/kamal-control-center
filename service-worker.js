@@ -1,5 +1,5 @@
-const CACHE_NAME = 'up-again-v26';
-const ASSETS = ['./', './index.html', './styles.css', './app.js', './insights.js', './manifest.webmanifest', './icon.svg'];
+const CACHE_NAME = 'up-again-v27';
+const ASSETS = ['./', './index.html', './styles.css', './app.js', './insights.js', './routine.js', './google-sync.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)));
@@ -19,6 +19,8 @@ self.addEventListener('activate', event => {
 // cache with it, and fall back to the cache (then index.html) only when offline.
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
+  // Only this app's own files. Google sign-in and calendar calls go straight to the network.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith((async () => {
     try {
       const response = await fetch(event.request);

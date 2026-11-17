@@ -51,6 +51,11 @@
           <button class="qa qa-wait" type="button" id="dayRescueButton" data-open-tab="body"><b>I want it now</b><small>Wait it out</small></button>
         </div>
 
+        <button class="panel payback-entry routine-entry" type="button" data-open-tab="routine">
+          <span><span class="eyebrow">Your routine</span><small id="routineEntrySummary">The same day, every day.</small><small class="routine-nudge" id="routineSyncNudge" hidden>Prayer reminders run out within a week. Open and send again.</small></span>
+          <span class="payback-entry-arrow" aria-hidden="true">&rarr;</span>
+        </button>
+
         <section class="today-list" aria-labelledby="todayListTitle">
           <div class="list-head"><h2 id="todayListTitle">Today</h2><span class="date-chip" id="scorecardDate"></span></div>
           <div class="sleep-row">
@@ -404,6 +409,55 @@
         </details>
       </section>
 
+      <!-- ============ ROUTINE ============ -->
+      <section id="routine" class="page" aria-labelledby="routineTitle">
+        <button class="back-link" type="button" data-open-tab="day">&larr; Day</button>
+        <div class="page-heading"><div><p class="eyebrow">Your routine</p><h1 id="routineTitle">The same day, every day</h1><p class="lede">Your day in order. Google Calendar puts a reminder on your phone at each one.</p></div></div>
+
+        <section class="panel">
+          <p class="settings-group-title">Today</p>
+          <ol class="routine-list" id="routineToday"></ol>
+        </section>
+
+        <section class="panel google-panel">
+          <p class="settings-group-title">Google Calendar</p>
+          <p class="google-status" id="googleStatus"></p>
+          <form id="googleClientForm" class="form-stack" hidden>
+            <div id="googleSetup">
+              <label>Google client ID<input id="googleClientInput" autocomplete="off" spellcheck="false" placeholder="1234-abc.apps.googleusercontent.com"></label>
+              <button class="secondary-button full-width" type="submit">Save</button>
+            </div>
+          </form>
+          <button class="primary-button full-width" id="googleSyncButton" type="button" hidden>Connect and send to Google Calendar</button>
+          <p class="small-note payback-tight" id="googleProgress"></p>
+          <p class="small-note payback-tight">The app makes its own "Up Again" calendar and can only touch that one, never your other events. Prayer times go in 30 days at a time; send again within a month. Edits to the routine reach Google when you send.</p>
+          <button class="text-button" id="googleForget" type="button" hidden>Stop sending to Google</button>
+        </section>
+
+        <section class="panel">
+          <p class="settings-group-title">Your routine</p>
+          <div class="routine-items" id="routineItems"></div>
+          <details class="bills-details">
+            <summary>+ Add to the routine</summary>
+            <div id="routineAddWrap"></div>
+          </details>
+        </section>
+
+        <section class="panel">
+          <p class="settings-group-title">Prayer times</p>
+          <div id="prayerToggles"></div>
+          <p class="small-note payback-tight" id="prayerPlaceNote"></p>
+          <details class="bills-details">
+            <summary>Change the city</summary>
+            <form id="prayerPlaceForm" class="form-stack">
+              <label>City<input id="prayerCity" maxlength="40"></label>
+              <div class="form-row"><label>Latitude<input id="prayerLat" type="number" step="0.0001" inputmode="decimal"></label><label>Longitude<input id="prayerLng" type="number" step="0.0001" inputmode="decimal"></label></div>
+              <button class="secondary-button full-width" type="submit">Save the city</button>
+            </form>
+          </details>
+        </section>
+      </section>
+
       <!-- ============ HOME FIRST ============ -->
       <section id="home" class="page" aria-labelledby="homeTitle">
         <button class="back-link" type="button" data-open-tab="month">&larr; Month</button>
@@ -571,6 +625,8 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="insights.js"></script>
+  <script src="routine.js"></script>
+  <script src="google-sync.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

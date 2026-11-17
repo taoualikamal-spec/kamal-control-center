@@ -9,6 +9,7 @@ It has four parts:
 - **Year** — the whole year. What you learned, and twelve months of your focus time.
 - **Waiting** — for when you want to smoke or use. It helps you wait a few minutes until the feeling passes.
 - **Home first** — from Month. One amount goes home every month. Every Money in sends its Family & home share there by itself, "I sent it home" takes it out of that box, and Pay back waits until home is ready.
+- **Routine** — from Day. Your day in order (wake, work blocks, meals, the five prayers by the Habous method, logging hours and money, the week check, home money on the 1st). One tap sends it to an "Up Again" calendar in Google Calendar, with a phone reminder at each one.
 - **Pay back** — from Month. The people you owe, in the order you will pay them. Tick one when it is all paid, or pay in parts; every payment also shows in Money out, and names and amounts can be changed.
 
 The app never scores you and never punishes a bad day. If you miss a day, you just start again the next day.
@@ -43,6 +44,7 @@ node tests/test-navigation.js
 node tests/test-sleep.js
 node tests/test-payback.js
 node tests/test-home.js
+node tests/test-routine.js
 ```
 
 Each one ends with `ALL ... PASS`. If it says `FAILED`, the line above it says what broke.

@@ -6,7 +6,7 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..') + path.sep;
 
 function load(seed) {
-  let code = fs.readFileSync(ROOT + 'insights.js', 'utf8') + ';\n' + fs.readFileSync(ROOT + 'app.js', 'utf8');
+  let code = ['insights.js', 'routine.js', 'google-sync.js', 'app.js'].map(file => fs.readFileSync(ROOT + file, 'utf8')).join(';\n');
   code += `\n;globalThis.__api = {
     get state() { return state; },
     today, monthKey, shiftDate, shiftMonth,
@@ -26,7 +26,7 @@ function load(seed) {
   });
   const getEl = sel => { if (!elems.has(sel)) elems.set(sel, makeEl()); return elems.get(sel); };
   // Real page elements, so tests can see which page selectTab actually shows.
-  const pages = ['day', 'month', 'year', 'time', 'body', 'home', 'payback', 'settings'].map(id => Object.assign(makeEl(), { id }));
+  const pages = ['day', 'month', 'year', 'time', 'body', 'routine', 'home', 'payback', 'settings'].map(id => Object.assign(makeEl(), { id }));
   // Real nav items too, so tests can see which tab is lit.
   const navItems = ['day', 'month', 'year', 'settings'].map(tab => {
     const el = makeEl(); el.dataset.tab = tab; return el;

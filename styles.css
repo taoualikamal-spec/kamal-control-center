@@ -676,3 +676,36 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
   .payback-pay-form, .payback-edit-form { grid-template-columns: 1fr 1fr; }
   .payback-pay-form button, .payback-edit-form button { grid-column: 1 / -1; }
 }
+
+/* ---------- Routine ---------- */
+.routine-entry .eyebrow, .routine-entry .payback-entry-arrow { color: var(--green); }
+.routine-entry:hover { border-color: var(--green); }
+.routine-entry small b { color: var(--text); }
+.routine-nudge { color: var(--debt) !important; }
+.routine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.routine-list li { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; font-size: .9rem; }
+.routine-list li.past { opacity: .45; }
+.routine-list li.next { background: rgba(84, 214, 163, .12); border: 1px solid rgba(84, 214, 163, .4); }
+.routine-list li.prayer b { color: var(--family); }
+.routine-list .text-button { padding: 0; font-size: .78rem; }
+.routine-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.routine-items { display: grid; gap: 8px; margin-bottom: 12px; }
+.routine-item { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface-3); }
+.routine-item.open { background: var(--surface-2); }
+.routine-item-head { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.routine-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.routine-item-main small { color: var(--muted); font-size: .74rem; }
+.routine-form { margin-top: 12px; }
+.day-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.day-chip { position: relative; }
+.day-chip input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.day-chip span { display: inline-block; padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; font-size: .8rem; font-weight: 700; color: var(--muted); cursor: pointer; }
+.day-chip input:checked + span { background: var(--green); border-color: var(--green); color: #062218; }
+.day-chip input:focus-visible + span { outline: 2px solid var(--family); outline-offset: 2px; }
+.routine-form-actions { display: flex; gap: 12px; align-items: center; }
+.routine-form-actions .secondary-button { flex: 1; }
+.delete-text { background: none; border: 0; color: var(--debt); font-weight: 700; cursor: pointer; padding: 8px; }
+.google-status { margin: 0 0 12px; }
+@media (max-width: 580px) {
+  .routine-list li, .routine-item-head { grid-template-columns: 78px minmax(0, 1fr) auto; }
+}
