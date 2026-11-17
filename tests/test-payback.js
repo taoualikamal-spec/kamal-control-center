@@ -64,6 +64,60 @@ const { check, done } = reporter();
 }
 
 {
+  // Paying in parts, and Money out kept in step.
+  const h = load();
+  const c = h.ctx;
+  const s = () => h.api.state;
+  c.addPaybackItems(c.parsePaybackLines('Amine 300\nNadia 3500\nOmar 6500'));
+  const nadia = s().payback[1];
+  c.setPaybackPaid(s().payback[0].id, true, '2026-11-10');
+  check('a tick is also money out of the "Money I owe" box', s().transactions.some(entry => entry.type === 'expense' && entry.envelopeId === 'debt' && entry.amount === 300));
+
+  const part = c.payPayback(nadia.id, 600, '2026-11-12');
+  let sum = c.paybackSummary();
+  check('a part payment lowers what is left', c.paybackLeftOf(nadia) === 2900 && sum.paidAmount === 900 && sum.left === 9400);
+  check('a part payment does not mark the person as paid', sum.paidCount === 1 && sum.next.name === 'Nadia' && nadia.paidOn === null);
+  const out = s().transactions.find(entry => entry.id === part.transactionId);
+  check('the part shows in Money out with the name', out && out.amount === 600 && out.note === 'Paid back: Nadia' && out.envelopeId === 'debt');
+  check('you cannot pay more than is left', c.payPayback(nadia.id, 99999, '2026-11-13').amount === 2900 && nadia.paidOn === '2026-11-13');
+  check('paying the last part marks the person as paid', c.paybackSummary().paidCount === 2);
+
+  c.setPaybackPaid(nadia.id, false);
+  check('unticking keeps parts that were typed in', c.paybackLeftOf(nadia) === 0 && nadia.payments.length === 2);
+  c.removePaybackPart(nadia.id, nadia.payments[1].id);
+  check('removing a part puts it back, and out of Money out', c.paybackLeftOf(nadia) === 2900 && nadia.paidOn === null && s().transactions.filter(entry => entry.paybackItemId === nadia.id).length === 1);
+  c.setPaybackPaid(nadia.id, true, '2026-11-20');
+  check('a tick after a part pays only what is left', nadia.payments[1].amount === 2900 && nadia.payments[1].full === true);
+  c.setPaybackPaid(nadia.id, false);
+  check('unticking then undoes only the tick', nadia.payments.length === 1 && c.paybackLeftOf(nadia) === 2900);
+
+  // Changes made in Money out flow back.
+  out.amount = 1000;
+  c.syncPaybackFromTransactions();
+  check('changing the amount in Money out changes the part', c.paybackLeftOf(nadia) === 2500);
+  c.deleteTransaction(out.id);
+  check('deleting it in Money out removes the part', nadia.payments.length === 0 && c.paybackLeftOf(nadia) === 3500);
+
+  // Editing a name or total.
+  check('a name cannot clash with someone else', c.editPayback(nadia.id, { name: 'omar', amount: 3500 }) === null);
+  c.editPayback(nadia.id, { name: 'Nadia B', amount: 3000 });
+  check('the name and total can be changed', nadia.name === 'Nadia B' && c.paybackLeftOf(nadia) === 3000);
+  c.payPayback(nadia.id, 1000, '2026-11-21');
+  c.editPayback(nadia.id, { amount: 1000 });
+  check('lowering the total to what was paid finishes the debt', nadia.paidOn === '2026-11-21' && c.paybackSummary().next.name === 'Omar');
+}
+
+{
+  // Ticked before parts existed: still paid, and unticking still works.
+  const h = load({ settings: { envelopes: [] }, transactions: [], payback: [{ id: 'p1', name: 'Karim', amount: 1000, paidOn: '2026-11-01' }] });
+  const c = h.ctx;
+  const item = h.api.state.payback[0];
+  check('an old tick counts as paid in full', c.paybackLeftOf(item) === 0 && c.paybackSummary().paidAmount === 1000);
+  c.setPaybackPaid('p1', false);
+  check('an old tick can be undone', item.paidOn === null && c.paybackLeftOf(item) === 1000);
+}
+
+{
   const h = load();
   h.ctx.showTab('day');
   h.ctx.selectTab('payback');

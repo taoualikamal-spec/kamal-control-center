@@ -629,7 +629,8 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .payback-row.done .payback-number { background: var(--green); border-color: var(--green); color: #062218; }
 .payback-tight { margin-top: 4px; }
 @media (max-width: 580px) {
-  .payback-panel.editing .payback-row { grid-template-columns: 1fr; padding: 10px 10px 8px 12px; }
+  .payback-panel.editing .payback-row { grid-template-columns: 1fr auto; padding: 10px 10px 8px 12px; }
+  .payback-panel.editing .payback-tools { grid-column: 1 / -1; }
   .payback-panel-top { flex-wrap: wrap; }
   .payback-tools { justify-content: flex-end; }
 }
@@ -656,3 +657,22 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 
 /* Anything marked hidden stays hidden, whatever display a class gives it. */
 [hidden] { display: none !important; }
+
+/* Pay back: paying in parts */
+.payback-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.payback-more { border: 1px solid var(--line); background: transparent; color: var(--family); border-radius: 999px; padding: 6px 10px; font-size: .74rem; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.payback-row.open { background: var(--surface-2); }
+.payback-bar { display: block; height: 4px; margin-top: 4px; border-radius: 99px; background: var(--line); overflow: hidden; max-width: 140px; }
+.payback-bar span { display: block; height: 100%; background: var(--green); }
+.payback-pay { grid-column: 1 / -1; display: grid; gap: 12px; padding: 6px 2px 4px; }
+.payback-pay-form, .payback-edit-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+.payback-pay-form label, .payback-edit-form label { font-size: .74rem; color: var(--muted); font-weight: 700; }
+.payback-pay-form input, .payback-edit-form input { margin-top: 5px; }
+.payback-parts { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.payback-parts li { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 10px; font-size: .84rem; color: var(--muted); padding: 2px 0; }
+.payback-parts li b { color: var(--text); font-variant-numeric: tabular-nums; }
+.payback-row.done .payback-pay b { text-decoration: none; }
+@media (max-width: 580px) {
+  .payback-pay-form, .payback-edit-form { grid-template-columns: 1fr 1fr; }
+  .payback-pay-form button, .payback-edit-form button { grid-column: 1 / -1; }
+}

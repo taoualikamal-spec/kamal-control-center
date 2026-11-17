@@ -604,7 +604,10 @@ const sumAmounts = list => list.reduce((sum, entry) => sum + Number(entry.amount
    usual way: each one you finish is one less person waiting). Names live only
    in this phone's storage, never in the code. Ticking one is not a test you can
    fail: you can untick it, and nothing resets. "Own plan" items, like a
-   business with a contract, are paid on their own schedule beside the list. */
+   business with a contract, are paid on their own schedule beside the list.
+   A debt can be paid in parts. Each part is also money out of the "Money I
+   owe" box, so Money out and Pay back always tell the same story: delete or
+   change it in one place and the other follows. */
 // Runs while the saved state loads, before makeId exists, so it makes its own ids.
 function paybackId() {
   return `pb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -618,8 +621,89 @@ function normalizePayback(list) {
       name: String(item.name).trim(),
       amount: Math.max(0, Math.round(Number(item.amount || 0))),
       separate: Boolean(item.separate),
-      paidOn: item.paidOn || null
+      paidOn: item.paidOn || null,
+      payments: (Array.isArray(item.payments) ? item.payments : [])
+        .filter(part => part && /^\d{4}-\d{2}-\d{2}$/.test(String(part.date || '')) && Number(part.amount) > 0)
+        .map(part => ({ id: part.id || paybackId(), date: part.date, amount: Math.round(Number(part.amount)), full: Boolean(part.full), transactionId: part.transactionId || null }))
     }));
+}
+
+// Ticked before parts existed: paid in full, with no parts recorded.
+function paybackPaid(item) {
+  if (item.payments.length) return Math.min(item.amount, sumAmounts(item.payments));
+  return item.paidOn ? item.amount : 0;
+}
+function paybackLeftOf(item) { return Math.max(0, item.amount - paybackPaid(item)); }
+
+// Done when nothing is left; the date is the day the last part was paid.
+function refreshPaybackDone(item) {
+  if (!item.payments.length) return;
+  const last = [...item.payments].sort((a, b) => a.date.localeCompare(b.date)).pop();
+  item.paidOn = paybackLeftOf(item) === 0 ? last.date : null;
+}
+
+function debtEnvelopeId() {
+  const boxes = state.settings.envelopes;
+  return (boxes.find(box => box.id === 'debt') || boxes.find(box => /owe|debt/i.test(box.name)) || {}).id || null;
+}
+
+// Pay part (or all) of what is left. Never more than what is left.
+function payPayback(id, amount, date = today(), full = false) {
+  const item = state.payback.find(entry => entry.id === id);
+  if (!item) return null;
+  const value = Math.min(paybackLeftOf(item), Math.round(Number(amount || 0)));
+  if (!(value > 0)) return null;
+  const part = { id: makeId(), date, amount: value, full, transactionId: null };
+  const box = debtEnvelopeId();
+  if (box) {
+    const expense = { id: makeId(), type: 'expense', amount: value, date, envelopeId: box, note: `Paid back: ${item.name}`, paybackItemId: item.id, paybackPartId: part.id, createdAt: new Date().toISOString() };
+    state.transactions.push(expense);
+    part.transactionId = expense.id;
+  }
+  item.payments.push(part);
+  refreshPaybackDone(item);
+  return part;
+}
+
+function removePaybackPart(itemId, partId) {
+  const item = state.payback.find(entry => entry.id === itemId);
+  const part = item && item.payments.find(entry => entry.id === partId);
+  if (!part) return false;
+  item.payments = item.payments.filter(entry => entry.id !== partId);
+  if (part.transactionId) state.transactions = state.transactions.filter(entry => entry.id !== part.transactionId);
+  if (!item.payments.length) item.paidOn = null;
+  refreshPaybackDone(item);
+  return true;
+}
+
+// Change the name or the total owed. A smaller total can finish the debt.
+function editPayback(id, { name, amount }) {
+  const item = state.payback.find(entry => entry.id === id);
+  if (!item) return null;
+  const cleanName = String(name ?? item.name).trim();
+  const total = Math.round(Number(amount ?? item.amount));
+  if (!cleanName || !(total > 0)) return null;
+  const clash = state.payback.some(entry => entry.id !== id && entry.name.toLowerCase() === cleanName.toLowerCase());
+  if (clash) return null;
+  item.name = cleanName;
+  item.amount = total;
+  if (item.payments.length) refreshPaybackDone(item);
+  return item;
+}
+
+// Money out was changed or deleted: Pay back follows.
+function syncPaybackFromTransactions() {
+  const byId = new Map(state.transactions.map(entry => [entry.id, entry]));
+  state.payback.forEach(item => {
+    const before = item.payments.length;
+    item.payments = item.payments.filter(part => !part.transactionId || byId.has(part.transactionId));
+    item.payments.forEach(part => {
+      const entry = part.transactionId && byId.get(part.transactionId);
+      if (entry) { part.amount = Math.round(Number(entry.amount)); part.date = entry.date; }
+    });
+    if (before && !item.payments.length) item.paidOn = null;
+    refreshPaybackDone(item);
+  });
 }
 
 // "Amine 300", "Karim Bennani: 1,000 dh", "Car agency 3400 own plan" -> items.
@@ -638,16 +722,16 @@ function parsePaybackLines(text) {
 function paybackSummary(list = state.payback) {
   const inOrder = list.filter(item => !item.separate);
   const separate = list.filter(item => item.separate);
-  const paid = list.filter(item => item.paidOn);
+  const paid = list.filter(item => paybackLeftOf(item) === 0);
   const total = sumAmounts(list);
-  const paidAmount = sumAmounts(paid);
+  const paidAmount = list.reduce((sum, item) => sum + paybackPaid(item), 0);
   return {
     inOrder, separate,
     people: list.length,
     paidCount: paid.length,
     total, paidAmount,
     left: total - paidAmount,
-    next: inOrder.find(item => !item.paidOn) || null
+    next: inOrder.find(item => paybackLeftOf(item) > 0) || null
   };
 }
 
@@ -658,10 +742,17 @@ function addPaybackItems(items) {
   return fresh.length;
 }
 
+// The tick: pay whatever is left, or undo that tick (parts paid before stay).
 function setPaybackPaid(id, paid, date = today()) {
   const item = state.payback.find(entry => entry.id === id);
   if (!item) return null;
-  item.paidOn = paid ? date : null;
+  if (paid) {
+    if (paybackLeftOf(item) > 0) payPayback(id, paybackLeftOf(item), date, true);
+    return item;
+  }
+  const ticked = item.payments.filter(part => part.full);
+  if (ticked.length) ticked.forEach(part => removePaybackPart(item.id, part.id));
+  else if (!item.payments.length) item.paidOn = null;
   return item;
 }
 
@@ -679,20 +770,48 @@ function removePayback(id) {
   return state.payback.length < before;
 }
 
+let openPaybackId = null;
+
+function paybackPanel(item) {
+  const left = paybackLeftOf(item);
+  const parts = [...item.payments].sort((a, b) => b.date.localeCompare(a.date));
+  return `<div class="payback-pay">
+    ${left ? `<form class="payback-pay-form" data-payback-pay-form="${item.id}">
+      <label>Paid now (MAD)<input name="amount" type="number" inputmode="decimal" min="1" max="${left}" step="1" required placeholder="${left}"></label>
+      <label>Day<input name="date" type="date" value="${today()}" required></label>
+      <button class="secondary-button" type="submit">Save payment</button>
+    </form>` : ''}
+    ${parts.length ? `<ul class="payback-parts">${parts.map(part => `<li><span>${dateLabel(part.date)}</span><b>${money(part.amount)}</b><button class="delete-button" type="button" data-payback-part="${item.id}" data-part="${part.id}" aria-label="Remove this payment" title="Remove this payment">×</button></li>`).join('')}</ul>` : ''}
+    <form class="payback-edit-form" data-payback-edit-form="${item.id}">
+      <label>Name<input name="name" maxlength="60" required value="${escapeHtml(item.name)}"></label>
+      <label>Owed in total (MAD)<input name="amount" type="number" inputmode="decimal" min="1" step="1" required value="${item.amount}"></label>
+      <button class="text-button" type="submit">Save change</button>
+    </form>
+  </div>`;
+}
+
 function paybackRow(item, number, runningTotal) {
-  const done = Boolean(item.paidOn);
-  return `<div class="payback-row ${done ? 'done' : ''}" data-payback-row="${item.id}">
+  const paid = paybackPaid(item);
+  const left = paybackLeftOf(item);
+  const done = left === 0;
+  const open = openPaybackId === item.id;
+  const detail = done ? `Paid${item.paidOn ? ` on ${dateLabel(item.paidOn)}` : ''}`
+    : paid ? `${money(paid)} paid of ${money(item.amount)}`
+    : runningTotal !== undefined ? `After this one: ${money(runningTotal)} paid` : 'Paid on its own plan';
+  return `<div class="payback-row ${done ? 'done' : ''} ${paid && !done ? 'partial' : ''} ${open ? 'open' : ''}" data-payback-row="${item.id}">
     <label class="payback-check">
       <input type="checkbox" data-payback-toggle="${item.id}" ${done ? 'checked' : ''} aria-label="Paid ${escapeHtml(item.name)}">
       <span class="payback-number">${number ?? '·'}</span>
-      <span class="payback-main"><b>${escapeHtml(item.name)}</b><small>${done ? `Paid on ${dateLabel(item.paidOn)}` : runningTotal !== undefined ? `After this one: ${money(runningTotal)} paid` : 'Paid on its own plan'}</small></span>
-      <span class="payback-amount">${money(item.amount)}</span>
+      <span class="payback-main"><b>${escapeHtml(item.name)}</b><small>${detail}</small>${paid && !done ? `<span class="payback-bar"><span style="width:${Math.round((paid / item.amount) * 100)}%"></span></span>` : ''}</span>
+      <span class="payback-amount">${money(done ? item.amount : left)}</span>
     </label>
+    <button class="payback-more" type="button" data-payback-open="${item.id}" aria-expanded="${open}">${open ? 'Close' : done ? 'Edit' : 'Pay part'}</button>
     <span class="payback-tools">
       <button class="icon-button" type="button" data-payback-move="${item.id}" data-step="-1" aria-label="Move ${escapeHtml(item.name)} up" title="Move up">↑</button>
       <button class="icon-button" type="button" data-payback-move="${item.id}" data-step="1" aria-label="Move ${escapeHtml(item.name)} down" title="Move down">↓</button>
       <button class="delete-button" type="button" data-payback-delete="${item.id}" aria-label="Remove ${escapeHtml(item.name)}" title="Remove">×</button>
     </span>
+    ${open ? paybackPanel(item) : ''}
   </div>`;
 }
 
@@ -709,12 +828,12 @@ function renderPayback() {
   const homeWaiting = home.target > 0 && !home.covered && Boolean(s.next);
   $('#paybackNext').classList.toggle('waiting', homeWaiting);
   $('#paybackNext').innerHTML = homeWaiting
-    ? `Home first: <b>${money(home.toSetAside)}</b> still to set aside for ${homeDueLabel(home.dueDate)}.<small>Then: ${escapeHtml(s.next.name)} — ${money(s.next.amount)}</small>`
-    : s.next ? `Next: <b>${escapeHtml(s.next.name)}</b> — ${money(s.next.amount)}`
+    ? `Home first: <b>${money(home.toSetAside)}</b> still to set aside for ${homeDueLabel(home.dueDate)}.<small>Then: ${escapeHtml(s.next.name)} — ${money(paybackLeftOf(s.next))}</small>`
+    : s.next ? `Next: <b>${escapeHtml(s.next.name)}</b> — ${money(paybackLeftOf(s.next))}${paybackPaid(s.next) ? ' left' : ''}`
     : s.inOrder.length ? 'Everyone on the list is paid. Well done.' : '';
   let running = 0;
   $('#paybackList').innerHTML = s.inOrder.map((item, index) => {
-    running += item.amount;
+    running += paybackLeftOf(item);
     return paybackRow(item, index + 1, running);
   }).join('') || '<p class="small-note">No one on the list yet.</p>';
   $('#paybackSeparateWrap').hidden = !s.separate.length;
@@ -724,6 +843,14 @@ function renderPayback() {
 }
 
 function handlePaybackClick(event) {
+  const opener = event.target.closest('[data-payback-open]');
+  if (opener) { openPaybackId = openPaybackId === opener.dataset.paybackOpen ? null : opener.dataset.paybackOpen; renderPayback(); return; }
+  const partButton = event.target.closest('[data-payback-part]');
+  if (partButton) {
+    if (!confirm('Remove this payment? It also comes out of Money out.')) return;
+    if (removePaybackPart(partButton.dataset.paybackPart, partButton.dataset.part)) { saveState(); renderAll(); toast('Payment removed.'); }
+    return;
+  }
   const move = event.target.closest('[data-payback-move]');
   const remove = event.target.closest('[data-payback-delete]');
   if (move) { if (movePayback(move.dataset.paybackMove, Number(move.dataset.step))) { saveState(); renderPayback(); } return; }
@@ -739,8 +866,33 @@ function handlePaybackToggle(event) {
   if (!box) return;
   const item = setPaybackPaid(box.dataset.paybackToggle, box.checked);
   if (!item) return;
-  saveState(); renderPayback();
-  toast(item.paidOn ? `${item.name} — paid. One less person waiting.` : `${item.name} is back on the list.`);
+  // Paid in typed parts, not by a tick: show the parts, so one can be removed.
+  const stillPaid = !box.checked && paybackLeftOf(item) === 0;
+  if (stillPaid) openPaybackId = item.id;
+  saveState(); renderAll();
+  toast(stillPaid ? `${item.name} was paid in parts. Remove a payment below to undo it.`
+    : paybackLeftOf(item) === 0 ? `${item.name} — paid. One less person waiting.` : `${item.name} is back on the list.`);
+}
+
+function handlePaybackSubmit(event) {
+  const payForm = event.target.closest('[data-payback-pay-form]');
+  const editForm = event.target.closest('[data-payback-edit-form]');
+  if (!payForm && !editForm) return;
+  event.preventDefault();
+  if (payForm) {
+    const id = payForm.dataset.paybackPayForm;
+    const part = payPayback(id, payForm.elements.amount.value, payForm.elements.date.value || today());
+    if (!part) { toast('Type an amount up to what is left.'); return; }
+    const item = state.payback.find(entry => entry.id === id);
+    openPaybackId = null;
+    saveState(); renderAll();
+    toast(paybackLeftOf(item) === 0 ? `${item.name} — paid in full. One less person waiting.` : `${money(part.amount)} paid to ${item.name}. ${money(paybackLeftOf(item))} left.`);
+    return;
+  }
+  const item = editPayback(editForm.dataset.paybackEditForm, { name: editForm.elements.name.value, amount: editForm.elements.amount.value });
+  if (!item) { toast('Check the name (not already on the list) and the amount.'); return; }
+  saveState(); renderAll();
+  toast(`${item.name} saved.`);
 }
 
 function addPaybackFromForm(event) {
@@ -2023,6 +2175,7 @@ function addExpense(event) {
     if (entry) Object.assign(entry, fields);
     const move = entry && entry.homeMoveId && state.home.moves.find(item => item.id === entry.homeMoveId);
     if (move) Object.assign(move, { amount, date: fields.date });
+    if (entry && entry.paybackPartId) syncPaybackFromTransactions();
   } else {
     state.transactions.push({ id: makeId(), type: 'expense', ...fields, createdAt: new Date().toISOString() });
   }
@@ -2326,6 +2479,7 @@ function deleteTransaction(id) {
   const removed = new Set([id, ...linked.map(entry => entry.id)]);
   state.transactions = state.transactions.filter(entry => !removed.has(entry.id));
   state.home.moves = state.home.moves.filter(move => !move.transactionId || !removed.has(move.transactionId));
+  syncPaybackFromTransactions();
   if (editingIncomeId === id) cancelIncomeEdit();
   if (editingExpenseId && removed.has(editingExpenseId)) cancelExpenseEdit();
   saveState(); renderAll();
@@ -2430,6 +2584,7 @@ function registerEvents() {
   ['#paybackList', '#paybackSeparate'].forEach(selector => {
     $(selector).addEventListener('click', handlePaybackClick);
     $(selector).addEventListener('change', handlePaybackToggle);
+    $(selector).addEventListener('submit', handlePaybackSubmit);
   });
   $('#settingsForm').addEventListener('submit', saveSettings);
   $('#exportButton').addEventListener('click', exportData);
