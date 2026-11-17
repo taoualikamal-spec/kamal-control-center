@@ -60,6 +60,7 @@ function defaultState() {
     cravings: [],
     bills: [],
     payback: [],
+    home: normalizeHome(null),
     days: {},
     months: {},
     years: {},
@@ -127,6 +128,7 @@ function loadState() {
     stored.cravings ||= [];
     stored.bills = normalizeBills(stored.bills);
     stored.payback = normalizePayback(stored.payback);
+    stored.home = normalizeHome(stored.home);
     stored.days ||= {};
     stored.dismissedInsights ||= [];
     stored.months ||= {};
@@ -701,8 +703,14 @@ function renderPayback() {
   $('#paybackPeopleDetail').textContent = s.people ? `${s.people - s.paidCount} still waiting` : 'Add the people you owe below.';
   $('#paybackLeft').textContent = money(s.left);
   $('#paybackLeftDetail').textContent = s.people ? `${money(s.paidAmount)} paid back, of ${money(s.total)}` : 'Nothing added yet.';
-  $('#paybackNext').innerHTML = s.next
-    ? `Next: <b>${escapeHtml(s.next.name)}</b> — ${money(s.next.amount)}`
+  // Home comes first: while this month's home money is not set aside, the
+  // next person waits, and the card says so instead of pushing a creditor.
+  const home = homeSummary();
+  const homeWaiting = home.target > 0 && !home.covered && Boolean(s.next);
+  $('#paybackNext').classList.toggle('waiting', homeWaiting);
+  $('#paybackNext').innerHTML = homeWaiting
+    ? `Home first: <b>${money(home.toSetAside)}</b> still to set aside for ${homeDueLabel(home.dueDate)}.<small>Then: ${escapeHtml(s.next.name)} — ${money(s.next.amount)}</small>`
+    : s.next ? `Next: <b>${escapeHtml(s.next.name)}</b> — ${money(s.next.amount)}`
     : s.inOrder.length ? 'Everyone on the list is paid. Well done.' : '';
   let running = 0;
   $('#paybackList').innerHTML = s.inOrder.map((item, index) => {
@@ -754,6 +762,274 @@ function addPaybackFromPaste(event) {
   $('#paybackPaste').value = '';
   saveState(); renderPayback();
   toast(added ? `${added} added to the list.` : 'They are all on the list already.');
+}
+
+/* ---------- Home first ----------
+   One amount goes home every month, before anyone on the Pay back list.
+   Home money is set aside as each payment arrives, kept apart, and sent on
+   the 1st. Anything set aside beyond this month's amount is next month's
+   buffer, so one bad month dips the buffer instead of home.
+   Hours are logged because the paycheck only comes after a block of hours
+   (40 by default), so the hours are the earliest sign of a short month.
+   Nothing here says "late" or "failed": a month either went home in full by
+   the 3rd or it did not, and the next one is always the one in front of you. */
+const HOME_ON_TIME_DAY = 3;
+const WEEKS_PER_MONTH = 4.33;
+// Declared as functions, not consts: loadState runs them before the consts below exist.
+function homeHours(value) { return Math.round(Number(value || 0) * 100) / 100; }
+
+function normalizeHome(home) {
+  const h = home && typeof home === 'object' ? home : {};
+  const positive = (value, fallback) => { const n = Number(value); return Number.isFinite(n) && n >= 0 ? n : fallback; };
+  const dated = list => (Array.isArray(list) ? list : []).filter(item => item && /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || '')));
+  return {
+    target: Math.round(positive(h.target, 0)),
+    since: /^\d{4}-\d{2}$/.test(String(h.since || '')) ? h.since : '',
+    weeklyHours: positive(h.weeklyHours, 27),
+    blockHours: positive(h.blockHours, 40) || 40,
+    rate: positive(h.rate, 0),
+    hours: dated(h.hours).map(item => ({ id: item.id || paybackId(), date: item.date, hours: homeHours(item.hours) })).filter(item => item.hours > 0),
+    payouts: dated(h.payouts).map(item => ({ id: item.id || paybackId(), date: item.date, amount: Math.max(0, Math.round(Number(item.amount || 0))) })),
+    moves: dated(h.moves).filter(item => item.kind === 'aside' || item.kind === 'sent')
+      .map(item => ({ id: item.id || paybackId(), date: item.date, kind: item.kind, amount: Math.round(Number(item.amount || 0)), month: /^\d{4}-\d{2}$/.test(String(item.month || '')) ? item.month : item.date.slice(0, 7) }))
+      .filter(item => item.amount > 0)
+  };
+}
+
+// The first month that counts: this one if it is set up by the 3rd, otherwise next.
+function homeStartMonth(date = today()) {
+  return Number(date.slice(8, 10)) <= HOME_ON_TIME_DAY ? monthKey(date) : shiftMonth(monthKey(date), 1);
+}
+
+function setHomeSettings({ target, weeklyHours, blockHours, rate }, date = today()) {
+  const home = state.home;
+  if (target !== undefined) {
+    home.target = Math.max(0, Math.round(Number(target) || 0));
+    if (home.target && !home.since) home.since = homeStartMonth(date);
+  }
+  if (weeklyHours !== undefined) home.weeklyHours = Math.max(0, Number(weeklyHours) || 0);
+  if (blockHours !== undefined) home.blockHours = Math.max(1, Number(blockHours) || 40);
+  if (rate !== undefined) home.rate = Math.max(0, Number(rate) || 0);
+}
+
+function homeRate(home = state.home) {
+  if (home.rate) return home.rate;
+  const last = [...home.payouts].sort((a, b) => a.date.localeCompare(b.date)).pop();
+  return last && last.amount ? Math.round(last.amount / home.blockHours) : 0;
+}
+
+function homeSentFor(month, home = state.home) {
+  return sumAmounts(home.moves.filter(item => item.kind === 'sent' && item.month === month));
+}
+
+function homeWeekStart(date) {
+  const day = new Date(`${date}T12:00:00`).getDay();
+  return shiftDate(date, -((day + 6) % 7));
+}
+
+function homeSummary(asOf = today()) {
+  const home = state.home;
+  const target = home.target;
+  const thisMonth = monthKey(asOf);
+  const since = home.since || homeStartMonth(asOf);
+  const dueMonth = thisMonth >= since && homeSentFor(thisMonth) < target ? thisMonth : shiftMonth(thisMonth, 1);
+  const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside'));
+  const sentTotal = sumAmounts(home.moves.filter(item => item.kind === 'sent'));
+  const balance = asideTotal - sentTotal;
+  const need = Math.max(0, target - homeSentFor(dueMonth));
+  const ready = Math.min(Math.max(balance, 0), need);
+  const buffer = Math.min(Math.max(balance - need, 0), target);
+
+  const weekStart = homeWeekStart(asOf);
+  const weekEnd = shiftDate(weekStart, 6);
+  const weekHours = homeHours(home.hours.filter(item => item.date >= weekStart && item.date <= weekEnd).reduce((sum, item) => sum + item.hours, 0));
+  const totalHours = home.hours.reduce((sum, item) => sum + item.hours, 0);
+  const blockDone = homeHours(Math.max(0, totalHours - home.blockHours * home.payouts.length));
+  const rate = homeRate();
+
+  // Every month from the start up to this one, once its 1st has come.
+  const months = [];
+  for (let month = since; month <= thisMonth && target; month = shiftMonth(month, 1)) {
+    const sent = home.moves.filter(item => item.kind === 'sent' && item.month === month);
+    const onTimeAmount = sumAmounts(sent.filter(item => item.date <= `${month}-0${HOME_ON_TIME_DAY}`));
+    months.push({ month, sent: sumAmounts(sent), onTime: onTimeAmount >= target });
+  }
+  const recent = months.slice(-12);
+
+  return {
+    target, since, dueMonth, dueDate: firstOfMonth(dueMonth),
+    balance, need, ready, toSetAside: need - ready, buffer,
+    covered: target > 0 && need - ready === 0,
+    weekHours, weeklyHours: home.weeklyHours, weekHoursLeft: homeHours(Math.max(0, home.weeklyHours - weekHours)),
+    blockHours: home.blockHours, blockDone, blockValue: Math.round(Math.min(blockDone, home.blockHours) * rate), rate,
+    homeHoursPerWeek: rate ? Math.ceil(target / (rate * WEEKS_PER_MONTH)) : 0,
+    months: recent, onTimeCount: recent.filter(item => item.onTime).length
+  };
+}
+
+function addHomeHours(hours, date = today()) {
+  const value = homeHours(hours);
+  if (!(value > 0) || value > 24) return null;
+  const entry = { id: makeId(), date, hours: value };
+  state.home.hours.push(entry);
+  return entry;
+}
+
+function addHomeMove(kind, amount, date = today()) {
+  const value = Math.round(Number(amount || 0));
+  if (!(value > 0) || (kind !== 'aside' && kind !== 'sent')) return null;
+  const entry = { id: makeId(), date, kind, amount: value, month: kind === 'sent' ? homeSummary(date).dueMonth : monthKey(date) };
+  state.home.moves.push(entry);
+  return entry;
+}
+
+// A paycheck closes one block of hours; part of it goes straight to home.
+function recordSimonPay(amount, toHome, date = today()) {
+  const value = Math.round(Number(amount || 0));
+  if (!(value > 0)) return null;
+  const payout = { id: makeId(), date, amount: value };
+  state.home.payouts.push(payout);
+  const aside = Math.min(value, Math.max(0, Math.round(Number(toHome || 0))));
+  if (aside) addHomeMove('aside', aside, date);
+  return { payout, aside };
+}
+
+function removeHomeEntry(kind, id) {
+  const list = kind === 'hours' ? 'hours' : kind === 'payout' ? 'payouts' : 'moves';
+  const before = state.home[list].length;
+  state.home[list] = state.home[list].filter(item => item.id !== id);
+  return state.home[list].length < before;
+}
+
+const homeMonthLabel = key => new Date(`${key}-01T12:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+const homeDueLabel = date => new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+
+function homeActivity(limit = 12) {
+  const home = state.home;
+  return [
+    ...home.hours.map(item => ({ ...item, type: 'hours', text: `${item.hours} h of work` })),
+    ...home.payouts.map(item => ({ ...item, type: 'payout', text: `Paid for ${home.blockHours} h: ${money(item.amount)}` })),
+    ...home.moves.map(item => ({ ...item, type: 'move', text: item.kind === 'sent' ? `Sent home: ${money(item.amount)} (for ${homeMonthLabel(item.month)})` : `Set aside for home: ${money(item.amount)}` }))
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
+}
+
+function renderHome() {
+  if (!$('#homeStatus')) return;
+  const s = homeSummary();
+  const entry = $('#homeEntrySummary');
+  $('#homeSetup').hidden = Boolean(s.target);
+  $('#homeMain').hidden = !s.target;
+  if (entry) entry.textContent = !s.target ? 'Set how much goes home each month.'
+    : s.covered ? `Ready for ${homeDueLabel(s.dueDate)}: ${money(s.need)}. Send it on the day.`
+    : `${money(s.ready)} of ${money(s.need)} ready for ${homeDueLabel(s.dueDate)}`;
+  const settings = state.home;
+  $('#homeTargetInput').value = settings.target || '';
+  $('#homeWeeklyInput').value = settings.weeklyHours || '';
+  $('#homeBlockInput').value = settings.blockHours || '';
+  $('#homeRateInput').value = settings.rate || '';
+  ['#homeHoursDate', '#homePayDate', '#homeAsideDate', '#homeSentDate'].forEach(selector => { $(selector).value ||= today(); });
+  if (!s.target) return;
+
+  $('#homeDueTitle').textContent = `For ${homeDueLabel(s.dueDate)}`;
+  const percent = s.need ? Math.round((s.ready / s.need) * 100) : 100;
+  $('#homeFill').style.width = `${percent}%`;
+  $('#homeStatus').textContent = s.covered
+    ? `Ready: ${money(s.need)}. On the 1st it goes home, before anyone else.`
+    : `${money(s.ready)} of ${money(s.need)} set aside · ${money(s.toSetAside)} to go`;
+  $('#homeSentAmount').placeholder = String(s.ready || s.need);
+
+  $('#homeWeek').textContent = `${s.weekHours} of ${s.weeklyHours} h`;
+  $('#homeWeekDetail').textContent = s.weekHoursLeft
+    ? `${s.weekHoursLeft} h to go this week.${s.rate ? ` Each hour is about ${money(s.rate)}.` : ''}`
+    : 'This week is covered.';
+  $('#homeBlock').textContent = `${Math.min(s.blockDone, s.blockHours)} of ${s.blockHours} h`;
+  $('#homeBlockDetail').textContent = s.blockDone >= s.blockHours ? 'This block is done. The payment is due.'
+    : s.rate ? `About ${money(s.blockValue)} earned toward the next payment.` : 'Toward the next payment.';
+  $('#homeBuffer').textContent = money(s.buffer);
+  $('#homeBufferDetail').textContent = s.buffer >= s.target ? 'Next month is covered too.' : `of ${money(s.target)}: next month covered ahead`;
+  const counted = s.months.length;
+  $('#homeRecord').textContent = counted ? `${s.onTimeCount} of ${counted}` : '—';
+  $('#homeRecordDetail').textContent = counted ? `months home got ${money(s.target)} by the ${HOME_ON_TIME_DAY}rd` : `Starts with ${homeMonthLabel(s.since)}.`;
+  $('#homeNeedNote').textContent = s.homeHoursPerWeek
+    ? `At ${money(s.rate)} an hour, ${money(s.target)} a month takes about ${s.homeHoursPerWeek} h of work a week, before anything for yourself.`
+    : 'Add your hourly rate to see how many hours home takes.';
+
+  const toHome = $('#homePayToHome');
+  if (!toHome.dataset.touched) toHome.placeholder = String(s.toSetAside);
+  $('#homePayHint').textContent = s.toSetAside
+    ? `Home first: ${money(s.toSetAside)} still to set aside for ${homeDueLabel(s.dueDate)}.`
+    : `Home for ${homeDueLabel(s.dueDate)} is ready. Extra can go to next month's buffer once your own-plan payments are done.`;
+
+  $('#homeMonthsWrap').hidden = !s.months.length;
+  $('#homeMonths').innerHTML = s.months.map(item => `<li class="${item.onTime ? 'on' : ''}"><span>${homeMonthLabel(item.month)}</span><b>${item.sent ? money(item.sent) : 'not sent yet'}${item.onTime ? ' · on time' : ''}</b></li>`).join('');
+  $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}</small></span><button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button></li>`).join('')
+    || '<li class="small-note">Nothing logged yet.</li>';
+}
+
+function homeDateValue(selector) { return $(selector).value || today(); }
+
+function saveHomeSettings(event) {
+  event.preventDefault();
+  const target = Math.round(Number($('#homeTargetInput').value || $('#homeSetupTarget').value || 0));
+  setHomeSettings({ target, weeklyHours: $('#homeWeeklyInput').value || state.home.weeklyHours, blockHours: $('#homeBlockInput').value || state.home.blockHours, rate: $('#homeRateInput').value || 0 });
+  saveState(); renderAll();
+  toast(target ? `Home: ${money(target)} every month, first.` : 'Home amount cleared.');
+}
+
+function homeSetupSubmit(event) {
+  event.preventDefault();
+  const target = Math.round(Number($('#homeSetupTarget').value || 0));
+  if (!target) return;
+  setHomeSettings({ target, rate: $('#homeSetupRate').value || state.home.rate });
+  saveState(); renderAll();
+  toast(`Home: ${money(target)} every month. It comes before anyone on your list.`);
+}
+
+function homeLogHours(event) {
+  event.preventDefault();
+  const entry = addHomeHours($('#homeHoursInput').value, homeDateValue('#homeHoursDate'));
+  if (!entry) { toast('Hours for one day: more than 0, up to 24.'); return; }
+  $('#homeHoursInput').value = '';
+  saveState(); renderAll();
+  const s = homeSummary();
+  toast(s.weekHoursLeft ? `${entry.hours} h logged. ${s.weekHoursLeft} h to go this week.` : `${entry.hours} h logged. This week is covered.`);
+}
+
+function homeRecordPay(event) {
+  event.preventDefault();
+  const suggestion = homeSummary().toSetAside;
+  const typed = $('#homePayToHome').value;
+  const result = recordSimonPay($('#homePayAmount').value, typed === '' ? suggestion : typed, homeDateValue('#homePayDate'));
+  if (!result) return;
+  event.target.reset(); delete $('#homePayToHome').dataset.touched;
+  saveState(); renderAll();
+  toast(result.aside ? `${money(result.aside)} set aside for home first. The rest is yours to plan.` : 'Payment logged.');
+}
+
+function homeSetAside(event) {
+  event.preventDefault();
+  const entry = addHomeMove('aside', $('#homeAsideAmount').value, homeDateValue('#homeAsideDate'));
+  if (!entry) return;
+  event.target.reset();
+  saveState(); renderAll();
+  toast(`${money(entry.amount)} set aside for home.`);
+}
+
+function homeSend(event) {
+  event.preventDefault();
+  const s = homeSummary();
+  const amount = $('#homeSentAmount').value || s.ready || s.need;
+  const entry = addHomeMove('sent', amount, homeDateValue('#homeSentDate'));
+  if (!entry) return;
+  event.target.reset();
+  saveState(); renderAll();
+  toast(`${money(entry.amount)} sent home for ${homeMonthLabel(entry.month)}. That one counts.`);
+}
+
+function handleHomeDelete(event) {
+  const button = event.target.closest('[data-home-delete]');
+  if (!button || !confirm('Remove this entry?')) return;
+  if (removeHomeEntry(button.dataset.homeDelete, button.dataset.id)) { saveState(); renderAll(); }
 }
 
 function daysInMonth(key) {
@@ -1662,6 +1938,7 @@ function renderAll() {
   updateTimerTaskOptions();
   renderTime();
   renderBody();
+  renderHome();
   renderPayback();
   renderSettings();
 }
@@ -2009,7 +2286,7 @@ async function importData(event) {
     if (!nextState?.settings || !Array.isArray(nextState.transactions)) throw new Error('Invalid backup');
     state = nextState;
     normalizeSettings(state.settings);
-    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.payback = normalizePayback(state.payback); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
+    state.timeEntries ||= []; state.cravings ||= []; state.bills = normalizeBills(state.bills); state.payback = normalizePayback(state.payback); state.home = normalizeHome(state.home); state.days ||= {}; state.months ||= {}; state.years ||= {}; state.dismissedInsights ||= []; state.activeTimer ||= null; state.activeSurf ||= null;
     saveState(); renderAll(); toast('Backup loaded.');
   } catch { toast('This file is not an Up Again backup.'); }
   event.target.value = '';
@@ -2038,10 +2315,10 @@ function deleteCraving(id) {
    Every move is a real history entry, so the phone's back button goes back
    through the app instead of leaving it. The address also names the page,
    so a refresh stays put. */
-const TABS = ['day', 'month', 'year', 'time', 'body', 'payback', 'settings'];
-// Time and Waiting are opened from Day, and Pay back from Month. None is its
+const TABS = ['day', 'month', 'year', 'time', 'body', 'home', 'payback', 'settings'];
+// Time and Waiting are opened from Day, and Home and Pay back from Month. None is its
 // own tab, so the tab they came from stays lit while you are inside them.
-const TAB_PARENT = { time: 'day', body: 'day', payback: 'month' };
+const TAB_PARENT = { time: 'day', body: 'day', home: 'month', payback: 'month' };
 const scrollMemory = {};
 
 function tabFromHash() {
@@ -2115,6 +2392,14 @@ function registerEvents() {
   });
   $('#paybackForm').addEventListener('submit', addPaybackFromForm);
   $('#paybackPasteForm').addEventListener('submit', addPaybackFromPaste);
+  $('#homeSetupForm').addEventListener('submit', homeSetupSubmit);
+  $('#homeSettingsForm').addEventListener('submit', saveHomeSettings);
+  $('#homeHoursForm').addEventListener('submit', homeLogHours);
+  $('#homePayForm').addEventListener('submit', homeRecordPay);
+  $('#homeAsideForm').addEventListener('submit', homeSetAside);
+  $('#homeSentForm').addEventListener('submit', homeSend);
+  $('#homePayToHome').addEventListener('input', event => { event.target.dataset.touched = '1'; });
+  $('#homeActivity').addEventListener('click', handleHomeDelete);
   ['#paybackList', '#paybackSeparate'].forEach(selector => {
     $(selector).addEventListener('click', handlePaybackClick);
     $(selector).addEventListener('change', handlePaybackToggle);

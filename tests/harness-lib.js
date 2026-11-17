@@ -26,7 +26,7 @@ function load(seed) {
   });
   const getEl = sel => { if (!elems.has(sel)) elems.set(sel, makeEl()); return elems.get(sel); };
   // Real page elements, so tests can see which page selectTab actually shows.
-  const pages = ['day', 'month', 'year', 'time', 'body', 'payback', 'settings'].map(id => Object.assign(makeEl(), { id }));
+  const pages = ['day', 'month', 'year', 'time', 'body', 'home', 'payback', 'settings'].map(id => Object.assign(makeEl(), { id }));
   // Real nav items too, so tests can see which tab is lit.
   const navItems = ['day', 'month', 'year', 'settings'].map(tab => {
     const el = makeEl(); el.dataset.tab = tab; return el;

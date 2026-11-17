@@ -132,6 +132,11 @@
           <article class="metric-card"><span>Money saved</span><strong id="monthKept">0 MAD</strong><small id="monthKeptDetail">From the times you waited.</small></article>
         </section>
 
+        <button class="panel payback-entry home-entry" type="button" data-open-tab="home">
+          <span><span class="eyebrow">Home first</span><b>Home money this month</b><small id="homeEntrySummary">Set how much goes home each month.</small></span>
+          <span class="payback-entry-arrow" aria-hidden="true">&rarr;</span>
+        </button>
+
         <button class="panel payback-entry" type="button" data-open-tab="payback">
           <span><span class="eyebrow">Pay back, in order</span><b>The people I owe</b><small id="paybackEntrySummary">Your debts, one by one, smallest first.</small></span>
           <span class="payback-entry-arrow" aria-hidden="true">&rarr;</span>
@@ -396,6 +401,102 @@
             <div class="table-wrap"><table><thead><tr><th>Day</th><th>What</th><th>Why</th><th>What happened</th><th class="number">Waited</th><th></th></tr></thead><tbody id="cravingRows"></tbody></table></div>
           </div>
         </details>
+      </section>
+
+      <!-- ============ HOME FIRST ============ -->
+      <section id="home" class="page" aria-labelledby="homeTitle">
+        <button class="back-link" type="button" data-open-tab="month">&larr; Month</button>
+        <div class="page-heading"><div><p class="eyebrow">Home first</p><h1 id="homeTitle">Home money, every month</h1><p class="lede">Set it aside each time you get paid. On the 1st it goes home, before anyone on your list.</p></div></div>
+
+        <section class="panel home-setup" id="homeSetup">
+          <form id="homeSetupForm" class="form-stack">
+            <div class="form-row">
+              <label>How much goes home each month? (MAD)<input id="homeSetupTarget" type="number" inputmode="decimal" min="1" step="1" required placeholder="8000"></label>
+              <label>What you earn an hour (MAD, optional)<input id="homeSetupRate" type="number" inputmode="decimal" min="0" step="1" placeholder="93"></label>
+            </div>
+            <button class="primary-button full-width" type="submit">Put home first</button>
+          </form>
+        </section>
+
+        <div id="homeMain" hidden>
+          <section class="panel home-due">
+            <p class="settings-group-title" id="homeDueTitle">For the 1st</p>
+            <div class="progress-track"><div class="progress-fill" id="homeFill" style="width:0%"></div></div>
+            <p class="home-status" id="homeStatus"></p>
+            <form id="homeSentForm" class="home-inline-form">
+              <input id="homeSentAmount" type="number" inputmode="decimal" min="1" step="1" aria-label="Amount sent home (MAD)">
+              <input id="homeSentDate" type="date" aria-label="Date sent">
+              <button class="secondary-button" type="submit">I sent it home</button>
+            </form>
+          </section>
+
+          <section class="metric-grid" aria-label="Home money">
+            <article class="metric-card"><span>Work this week</span><strong id="homeWeek">0 h</strong><small id="homeWeekDetail"></small></article>
+            <article class="metric-card"><span>Next payment</span><strong id="homeBlock">0 h</strong><small id="homeBlockDetail"></small></article>
+            <article class="metric-card"><span>Next month, ahead</span><strong id="homeBuffer">0 MAD</strong><small id="homeBufferDetail"></small></article>
+            <article class="metric-card"><span>Home on time</span><strong id="homeRecord">&mdash;</strong><small id="homeRecordDetail"></small></article>
+          </section>
+
+          <section class="panel form-panel">
+            <form id="homeHoursForm" class="form-stack">
+              <p class="settings-group-title">Log the hours you worked</p>
+              <div class="form-row">
+                <label>Hours<input id="homeHoursInput" type="number" inputmode="decimal" min="0.25" max="24" step="0.25" required placeholder="6"></label>
+                <label>Day<input id="homeHoursDate" type="date"></label>
+              </div>
+              <button class="secondary-button full-width" type="submit">Log hours</button>
+            </form>
+            <details class="bills-details">
+              <summary>I got paid</summary>
+              <form id="homePayForm" class="form-stack">
+                <p class="small-note payback-tight" id="homePayHint"></p>
+                <div class="form-row">
+                  <label>How much? (MAD)<input id="homePayAmount" type="number" inputmode="decimal" min="1" step="1" required></label>
+                  <label>Set aside for home (MAD)<input id="homePayToHome" type="number" inputmode="decimal" min="0" step="1"></label>
+                </div>
+                <label>Day<input id="homePayDate" type="date"></label>
+                <p class="small-note payback-tight">Leave "Set aside for home" empty to use the amount shown in it. Each payment closes one block of hours.</p>
+                <button class="secondary-button full-width" type="submit">Home first, then the rest</button>
+              </form>
+            </details>
+            <details class="bills-details">
+              <summary>Set aside other money for home</summary>
+              <form id="homeAsideForm" class="form-stack">
+                <div class="form-row">
+                  <label>How much? (MAD)<input id="homeAsideAmount" type="number" inputmode="decimal" min="1" step="1" required></label>
+                  <label>Day<input id="homeAsideDate" type="date"></label>
+                </div>
+                <p class="small-note payback-tight">From an order, a gift, anything. Money beyond this month's amount becomes next month's.</p>
+                <button class="secondary-button full-width" type="submit">Set aside</button>
+              </form>
+            </details>
+          </section>
+
+          <section class="panel">
+            <div id="homeMonthsWrap"><p class="settings-group-title">Months</p>
+            <ul class="home-months" id="homeMonths"></ul></div>
+            <p class="settings-group-title">Recent</p>
+            <ul class="home-activity" id="homeActivity"></ul>
+          </section>
+
+          <section class="panel form-panel">
+            <details class="bills-details">
+              <summary>Home settings</summary>
+              <form id="homeSettingsForm" class="form-stack">
+                <div class="form-row">
+                  <label>Home each month (MAD)<input id="homeTargetInput" type="number" inputmode="decimal" min="0" step="1"></label>
+                  <label>Hours a week to aim for<input id="homeWeeklyInput" type="number" inputmode="decimal" min="0" step="0.5"></label>
+                </div>
+                <div class="form-row">
+                  <label>Hours for one payment<input id="homeBlockInput" type="number" inputmode="decimal" min="1" step="1"></label>
+                  <label>What you earn an hour (MAD)<input id="homeRateInput" type="number" inputmode="decimal" min="0" step="1"></label>
+                </div>
+                <p class="small-note payback-tight" id="homeNeedNote"></p>
+                <button class="secondary-button full-width" type="submit">Save</button>
+              </form>
+            </details>
+          </section>
+        </div>
       </section>
 
       <!-- ============ PAY BACK ============ -->

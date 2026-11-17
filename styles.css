@@ -633,3 +633,21 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
   .payback-panel-top { flex-wrap: wrap; }
   .payback-tools { justify-content: flex-end; }
 }
+
+/* ---------- Home first ---------- */
+.home-entry:hover { border-color: var(--family); }
+.home-entry .eyebrow, .home-entry .payback-entry-arrow { color: var(--family); }
+.home-due .progress-fill { background: var(--family); }
+.home-due { margin-bottom: 14px; }
+.home-status { margin: 10px 0 14px; font-weight: 700; }
+.home-inline-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.home-months, .home-activity { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; }
+.home-months li, .home-activity li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: .88rem; }
+.home-months li b { font-variant-numeric: tabular-nums; color: var(--muted); }
+.home-months li.on b { color: var(--green); }
+.home-activity li > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.home-activity li small { color: var(--muted); font-size: .73rem; }
+.home-activity li.small-note { border: 0; padding: 0; }
+.payback-next.waiting { background: rgba(105, 169, 255, .12); border-color: rgba(105, 169, 255, .35); }
+.payback-next small { display: block; margin-top: 4px; color: var(--muted); font-size: .8rem; }
+@media (max-width: 580px) { .home-inline-form { grid-template-columns: 1fr 1fr; } .home-inline-form button { grid-column: 1 / -1; } }
