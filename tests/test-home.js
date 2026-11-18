@@ -84,6 +84,22 @@ function moneyIn(h, amount, date, closesBlock = false) {
 }
 
 {
+  // Home bills paid with money already set aside come out of what is ready.
+  const h = load();
+  const c = h.ctx;
+  c.setHomeSettings({ target: 7100 }, '2026-11-18');
+  moneyIn(h, 2500, '2026-11-18');
+  check('home share is ready', c.homeSummary('2026-11-18').ready === 1500);
+  h.api.state.bills = [{ id: 'wifi', name: 'Wi-Fi (last month)', amount: 400, dueDate: '2026-11-18', envelopeId: 'family', monthly: false, priority: 'earn' }];
+  c.markBillPaid('wifi|once');
+  const s = c.homeSummary('2026-11-18');
+  check('a home bill paid from home money lowers what is ready', s.ready === 1100);
+  check('it shows on Home, to change in Money out', c.homeActivity().some(item => item.type === 'spent' && item.fixedWhere === 'Money out'));
+  c.sendHome(1100, '2026-12-01', true);
+  check('sending home is not counted twice', c.homeSummary('2026-12-02').balance === 0);
+}
+
+{
   // Bills paid from the home box out of the same money are not counted twice.
   const h = load();
   const c = h.ctx;

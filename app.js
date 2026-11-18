@@ -544,11 +544,35 @@ function formatClock(totalSeconds) {
   return `${h}:${m}:${s}`;
 }
 
+/* The split of money left after bills. "Keep for food and fuel" is also a
+   floor for the Myself box: in a week where bills take most of the money,
+   20% of a small rest is not enough to eat, so Myself gets up to that amount
+   first and the other boxes share what is left by their own percentages.
+   In a normal week Myself's 20% is already above the floor and nothing
+   changes. */
 function splitIncome(amount) {
   const allocations = {};
+  const envelopes = state.settings.envelopes;
+  const floor = Math.min(amount, Number(state.settings.keepForLiving || 0));
+  const mine = envelopes.find(envelope => envelope.id === 'personal');
+  const mineUsual = mine ? Math.round(amount * Number(mine.percent) / 100) : 0;
+  if (mine && floor > mineUsual) {
+    allocations[mine.id] = floor;
+    const others = envelopes.filter(envelope => envelope !== mine);
+    const othersPercent = others.reduce((sum, envelope) => sum + Number(envelope.percent), 0);
+    const rest = amount - floor;
+    let allocated = 0;
+    others.forEach((envelope, index) => {
+      const allocation = index === others.length - 1 ? rest - allocated : othersPercent ? Math.round(rest * Number(envelope.percent) / othersPercent) : 0;
+      allocations[envelope.id] = allocation;
+      allocated += allocation;
+    });
+    if (!othersPercent && others.length === 0) allocations[mine.id] = amount;
+    return allocations;
+  }
   let allocated = 0;
-  state.settings.envelopes.forEach((envelope, index) => {
-    const allocation = index === state.settings.envelopes.length - 1 ? amount - allocated : Math.round(amount * Number(envelope.percent) / 100);
+  envelopes.forEach((envelope, index) => {
+    const allocation = index === envelopes.length - 1 ? amount - allocated : Math.round(amount * Number(envelope.percent) / 100);
     allocations[envelope.id] = allocation;
     allocated += allocation;
   });
@@ -1000,6 +1024,17 @@ function homeIncomeShares(home = state.home) {
     .filter(item => item.amount > 0 || item.closesBlock);
 }
 
+// Money already set aside for home that was then spent from the home box:
+// a bill marked Paid (Wi-Fi, electricity), or anything put in Money out from
+// that box. Bills paid out of the money just arriving are already left out
+// of the income share, and "Sent home" is counted as sent, so neither is
+// counted here.
+function homeSpentFromBox(home = state.home) {
+  const box = homeEnvelopeId();
+  if (!box || !home.target || !home.startedOn) return [];
+  return state.transactions.filter(entry => entry.type === 'expense' && entry.envelopeId === box && entry.date >= home.startedOn && !entry.fromIncomeId && !entry.homeMoveId);
+}
+
 // Paychecks that close a block of hours: marked on Money in (older ones were
 // logged on the Home page itself).
 function homePayouts(home = state.home) {
@@ -1035,7 +1070,7 @@ function homeSummary(asOf = today()) {
   const dueMonth = thisMonth >= since && !homeMonthClosed(thisMonth) ? thisMonth : shiftMonth(thisMonth, 1);
   const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside')) + sumAmounts(homeIncomeShares());
   const sentTotal = sumAmounts(home.moves.filter(item => item.kind === 'sent'));
-  const balance = asideTotal - sentTotal;
+  const balance = asideTotal - sentTotal - sumAmounts(homeSpentFromBox());
   const need = Math.max(0, target - homeSentFor(dueMonth));
   const ready = Math.min(Math.max(balance, 0), need);
   const buffer = Math.min(Math.max(balance - need, 0), target);
@@ -1115,6 +1150,7 @@ function homeActivity(limit = 12) {
     ...home.hours.map(item => ({ ...item, type: 'hours', text: `${item.hours} h of work` })),
     ...home.payouts.map(item => ({ ...item, type: 'payout', text: `Paid for ${home.blockHours} h: ${money(item.amount)}` })),
     ...homeIncomeShares(home).map(item => ({ ...item, type: 'income', fixed: true, text: `From Money in ${money(item.income)}: ${money(item.amount)} to home${item.closesBlock ? ` · paid ${home.blockHours} h` : ''}` })),
+    ...homeSpentFromBox(home).map(item => ({ id: item.id, date: item.date, type: 'spent', fixed: true, fixedWhere: 'Money out', text: `Paid from home money: ${item.note || 'expense'} ${money(item.amount)}` })),
     ...home.moves.map(item => ({ ...item, type: 'move', text: item.kind === 'sent' ? `Sent home: ${money(item.amount)} (for ${homeMonthLabel(item.month)})` : `Set aside for home: ${money(item.amount)}` }))
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
 }
@@ -1170,7 +1206,7 @@ function renderHome() {
 
   $('#homeMonthsWrap').hidden = !s.months.length;
   $('#homeMonths').innerHTML = s.months.map(item => `<li class="${item.onTime ? 'on' : ''}"><span>${homeMonthLabel(item.month)}</span><b>${item.sent ? money(item.sent) : 'not sent yet'}${item.onTime ? ' · on time' : item.partial ? ' · what there was' : ''}</b></li>`).join('');
-  $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}${item.fixed ? ' · change it in Money in' : ''}</small></span>${item.fixed ? '' : `<button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button>`}</li>`).join('')
+  $('#homeActivity').innerHTML = homeActivity().map(item => `<li><span><b>${escapeHtml(item.text)}</b><small>${dateLabel(item.date)}${item.fixed ? ` · change it in ${item.fixedWhere || 'Money in'}` : ''}</small></span>${item.fixed ? '' : `<button class="delete-button" type="button" data-home-delete="${item.type}" data-id="${item.id}" aria-label="Remove this entry" title="Remove">×</button>`}</li>`).join('')
     || '<li class="small-note">Nothing logged yet.</li>';
 }
 

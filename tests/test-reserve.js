@@ -115,4 +115,20 @@ const bill = (id, name, amount, days, priority, envelopeId, api) => ({
   check('the reserve defaults to 0 for existing users', h.api.state.settings.keepForLiving === 0);
 }
 
+// ---------------- Myself never gets less than the kept amount ----------------
+{
+  const h = load();
+  const { api, ctx } = h;
+  check('with no reserve, the split is the usual 60/20/15/5', JSON.stringify(ctx.splitIncome(1000)) === JSON.stringify({ family: 600, personal: 200, debt: 150, emergency: 50 }));
+  api.state.settings.keepForLiving = 700;
+  const normal = ctx.splitIncome(4400);
+  check('a normal week is unchanged: 20% is already above 700', normal.personal === 880 && normal.family === 2640);
+  const tight = ctx.splitIncome(1300);
+  check('a tight week: Myself gets the 700 first', tight.personal === 700);
+  check('the rest keeps the other boxes in their proportions', tight.family === 450 && tight.debt === 113 && tight.emergency === 37);
+  check('nothing is lost or made up', Object.values(tight).reduce((a, b) => a + b, 0) === 1300);
+  const tiny = ctx.splitIncome(500);
+  check('less than 700 left: all of it goes to Myself', tiny.personal === 500 && tiny.family === 0 && Object.values(tiny).reduce((a, b) => a + b, 0) === 500);
+}
+
 done();
