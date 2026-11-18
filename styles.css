@@ -520,6 +520,8 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .bills-list, .pay-list { display: grid; gap: 8px; }
 .bill-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); }
 .bill-row.compact { grid-template-columns: minmax(0, 1fr) auto; }
+.bill-actions { display: flex; align-items: center; gap: 6px; }
+.bill-edit { min-height: 38px; padding: 7px 10px; font-size: .8rem; }
 .bill-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bill-main b { font-size: .9rem; color: var(--text); overflow-wrap: anywhere; }
 .bill-main small { font-size: .74rem; color: var(--muted); }
@@ -548,7 +550,9 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 
 @media (max-width: 580px) {
   .bill-row { grid-template-columns: minmax(0, 1fr) auto; }
-  .bill-row .bill-paid { grid-column: 1 / -1; width: 100%; }
+  .bill-row .bill-actions { grid-column: 1 / -1; }
+  .bill-row .bill-paid { flex: 1; }
+  .bill-row.compact .bill-actions { grid-column: auto; }
   .pay-row { grid-template-columns: minmax(0, 1fr) 92px; }
 }
 

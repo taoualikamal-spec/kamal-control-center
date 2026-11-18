@@ -167,6 +167,37 @@ function receive(h, amount, source = 'Client') {
   check('deleting a payment on its own works', !h.api.state.transactions.some(t => t.billId === 'rent'));
 }
 
+// ---------------- fixing a typo in a bill ----------------
+{
+  const h = load();
+  const T = setup(h);
+  const el = h.getEl;
+  el('#billAddDetails').scrollIntoView = () => {};
+  h.ctx.startBillEdit('friend');
+  check('editing fills the form with the bill', el('#billName').value === 'Money owed to a friend' && String(el('#billAmount').value) === '1000' && el('#billSubmit').textContent === 'Save changes');
+  el('#billName').value = 'Car agency 1/3';
+  el('#billAmount').value = '2000';
+  el('#billDue').value = h.api.shiftDate(T, 7);
+  h.ctx.addBill({ preventDefault() {} });
+  const bill = h.api.state.bills.find(b => b.id === 'friend');
+  check('saving changes the bill instead of adding a new one', h.api.state.bills.length === 4 && bill.name === 'Car agency 1/3' && bill.amount === 2000 && bill.dueDate === h.api.shiftDate(T, 7));
+  check('the form goes back to adding', el('#billSubmit').textContent === 'Add it' && el('#cancelBillEdit').hidden === true);
+  h.ctx.addBill({ preventDefault() {} });
+  check('after that, the form adds a new bill again', h.api.state.bills.length === 5);
+
+  // Part paid, then the amount is fixed: what is left follows the new amount.
+  const h2 = load();
+  setup(h2);
+  receive(h2, 3400);
+  const before = h2.ctx.unpaidBills().find(i => i.bill.id === 'friend');
+  check('nothing changes when a bill has no payments yet', before.remaining === 1000);
+  h2.ctx.updateBill('rent', { amount: 3500 });
+  const rent = h2.ctx.unpaidBills().find(i => i.bill.id === 'rent' && i.month !== 'once');
+  check('a paid bill raised later shows only the difference left', rent && rent.remaining === 500 && rent.paid === 3000);
+  check('a bill cannot be saved without a name or amount', h2.ctx.updateBill('rent', { name: ' ' }) === null && h2.ctx.updateBill('rent', { amount: 0 }) === null);
+  check('the history of payments is untouched', h2.api.state.transactions.filter(t => t.billId === 'rent').length === 1);
+}
+
 // ---------------- old data keeps working ----------------
 {
   const seed = {

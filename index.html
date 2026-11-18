@@ -161,7 +161,7 @@
           <div class="bills-list" id="billsList"></div>
 
           <details class="bills-details" id="billAddDetails">
-            <summary>+ Add a bill or urgent payment</summary>
+            <summary id="billAddSummary">+ Add a bill or urgent payment</summary>
             <form id="billForm" class="form-stack">
               <div class="form-row">
                 <label>What is it?<input id="billName" maxlength="60" required placeholder="Rent, electricity, money I owe someone..."></label>
@@ -178,7 +178,8 @@
                 <option value="other">Something else — money I owe, and the rest</option>
               </select></label>
               <p class="small-note">What earns money is suggested first, then what you need to live, then everything else. Without fuel there is no money tomorrow for anyone.</p>
-              <button class="secondary-button full-width" type="submit">Add it</button>
+              <button class="secondary-button full-width" type="submit" id="billSubmit">Add it</button>
+              <button class="text-button cancel-edit" id="cancelBillEdit" type="button" hidden>Cancel change</button>
             </form>
           </details>
 
@@ -545,7 +546,7 @@
         </section>
 
         <section class="panel payback-panel" id="paybackPanel">
-          <div class="payback-panel-top"><p class="payback-next" id="paybackNext"></p><button class="text-button" id="paybackEditButton" type="button">Change the order</button></div>
+          <div class="payback-panel-top"><p class="payback-next" id="paybackNext"></p><button class="text-button" id="paybackEditButton" type="button">Edit the list</button></div>
           <div class="payback-list" id="paybackList"></div>
           <div id="paybackSeparateWrap" hidden>
             <p class="settings-group-title">Paid on its own plan</p>

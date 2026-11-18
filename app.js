@@ -147,6 +147,7 @@ let toastTimeout;
 let selectedDate;   // set during init, once today() exists
 let selectedMonth;
 let editingIncomeId = null;
+let editingBillId = null;
 let payPicks = {};          // what the user chose to pay first from incoming money
 let payPicksTouched = false; // false while the app's suggestion is still in charge
 let editingExpenseId = null;
@@ -1749,13 +1750,13 @@ function renderBills() {
   $('#billsList').innerHTML = unpaid.map(item => `<div class="bill-row ${daysUntil(item.due) < 0 ? 'late' : ''}">
     <span class="bill-main"><b>${escapeHtml(item.bill.name)}</b><small>${escapeHtml(envelopeName(item.bill.envelopeId))} · ${dueLabel(item.due)}${item.paid ? ` · ${money(item.paid)} paid` : ''}</small></span>
     <span class="bill-amount">${money(item.remaining)}</span>
-    <button class="secondary-button bill-paid" type="button" data-bill-paid="${item.key}" title="I already paid this with money I had">Paid</button>
+    <span class="bill-actions"><button class="text-button bill-edit" type="button" data-bill-edit="${item.bill.id}" aria-label="Change ${escapeHtml(item.bill.name)}">Edit</button><button class="secondary-button bill-paid" type="button" data-bill-paid="${item.key}" title="I already paid this with money I had">Paid</button></span>
   </div>`).join('');
 
   $('#billsAllCount').textContent = state.bills.length;
   $('#billsAll').innerHTML = state.bills.map(bill => `<div class="bill-row compact">
     <span class="bill-main"><b>${escapeHtml(bill.name)}</b><small>${money(bill.amount)} · ${bill.monthly ? `every month, day ${Number(String(bill.dueDate).slice(8, 10))}` : `once, ${dateLabel(bill.dueDate)}`} · ${escapeHtml(envelopeName(bill.envelopeId))}${billPriorityLabel[bill.priority] ? ` · ${billPriorityLabel[bill.priority]}` : ''}</small></span>
-    <button class="delete-button" type="button" data-bill-delete="${bill.id}" title="Remove this bill" aria-label="Remove ${escapeHtml(bill.name)}">×</button>
+    <span class="bill-actions"><button class="text-button bill-edit" type="button" data-bill-edit="${bill.id}" aria-label="Change ${escapeHtml(bill.name)}">Edit</button><button class="delete-button" type="button" data-bill-delete="${bill.id}" title="Remove this bill" aria-label="Remove ${escapeHtml(bill.name)}">×</button></span>
   </div>`).join('') || '<p class="small-note">No bills yet.</p>';
 
   const select = $('#billEnvelope');
@@ -1766,12 +1767,68 @@ function renderBills() {
   if (!state.bills.length) $('#billAddDetails').open = true;
 }
 
+/* Fix a typo or a wrong amount, date, box or level. Payments already made
+   for the bill stay linked to it, so what is left to pay follows the new
+   amount. Returns the bill, or null when something is missing. */
+function updateBill(id, { name, amount, dueDate, envelopeId, monthly, priority }) {
+  const bill = state.bills.find(item => item.id === id);
+  if (!bill) return null;
+  const cleanName = String(name ?? bill.name).trim();
+  const total = Math.round(Number(amount ?? bill.amount));
+  const due = dueDate ?? bill.dueDate;
+  if (!cleanName || !(total >= 1) || !/^\d{4}-\d{2}-\d{2}$/.test(String(due))) return null;
+  Object.assign(bill, {
+    name: cleanName, amount: total, dueDate: due,
+    envelopeId: envelopeId ?? bill.envelopeId,
+    monthly: monthly === undefined ? bill.monthly : Boolean(monthly),
+    priority: priority ?? bill.priority
+  });
+  return bill;
+}
+
+function startBillEdit(id) {
+  const bill = state.bills.find(item => item.id === id);
+  if (!bill) return;
+  editingBillId = id;
+  $('#billName').value = bill.name;
+  $('#billAmount').value = bill.amount;
+  $('#billDue').value = bill.dueDate;
+  $('#billEnvelope').value = bill.envelopeId;
+  $('#billMonthly').checked = Boolean(bill.monthly);
+  $('#billPriority').value = bill.priority || 'live';
+  $('#billAddSummary').textContent = `Change: ${bill.name}`;
+  $('#billSubmit').textContent = 'Save changes';
+  $('#cancelBillEdit').hidden = false;
+  $('#billAddDetails').open = true;
+  $('#billName').focus();
+  $('#billAddDetails').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelBillEdit() {
+  editingBillId = null;
+  $('#billForm').reset();
+  $('#billDue').value = today();
+  $('#billAddSummary').textContent = '+ Add a bill or urgent payment';
+  $('#billSubmit').textContent = 'Add it';
+  $('#cancelBillEdit').hidden = true;
+}
+
 function addBill(event) {
   event.preventDefault();
   const name = $('#billName').value.trim();
   const amount = Math.round(Number($('#billAmount').value));
   const dueDate = $('#billDue').value;
   if (!name || !amount || amount < 1 || !dueDate) return;
+  if (editingBillId) {
+    const bill = updateBill(editingBillId, { name, amount, dueDate, envelopeId: $('#billEnvelope').value, monthly: $('#billMonthly').checked, priority: $('#billPriority').value });
+    cancelBillEdit();
+    $('#billAddDetails').open = false;
+    resetPayPicks();
+    saveState();
+    renderAll();
+    toast(bill ? `${bill.name} changed.` : 'That bill is gone, nothing changed.');
+    return;
+  }
   state.bills.push({
     id: makeId(), name, amount, dueDate, envelopeId: $('#billEnvelope').value,
     monthly: $('#billMonthly').checked, priority: $('#billPriority').value,
@@ -1786,6 +1843,7 @@ function addBill(event) {
 }
 
 function deleteBill(id) {
+  if (editingBillId === id) cancelBillEdit();
   const bill = state.bills.find(item => item.id === id);
   state.bills = state.bills.filter(item => item.id !== id);
   resetPayPicks();
@@ -2835,7 +2893,7 @@ function registerEvents() {
   $('#dayTaskForm').addEventListener('submit', event => { event.preventDefault(); addTask($('#dayTaskInput').value); $('#dayTaskInput').value = ''; });
   $('#paybackEditButton').addEventListener('click', () => {
     const editing = $('#paybackPanel').classList.toggle('editing');
-    $('#paybackEditButton').textContent = editing ? 'Done' : 'Change the order';
+    $('#paybackEditButton').textContent = editing ? 'Done' : 'Edit the list';
   });
   $('#paybackForm').addEventListener('submit', addPaybackFromForm);
   $('#paybackPasteForm').addEventListener('submit', addPaybackFromPaste);
@@ -2879,6 +2937,7 @@ function registerEvents() {
   $('#addHabitButton').addEventListener('click', addHabit);
   $('#addSubstanceButton').addEventListener('click', addSubstance);
   $('#billForm').addEventListener('submit', addBill);
+  $('#cancelBillEdit').addEventListener('click', cancelBillEdit);
   $('#payFirstList').addEventListener('input', syncPayPicksFromForm);
   $('#payFirstList').addEventListener('change', syncPayPicksFromForm);
   $('#startSurfButton').addEventListener('click', beginSurf);
@@ -2928,6 +2987,8 @@ function registerEvents() {
     if (gotoDayButton) { selectTab('day'); setSelectedDate(gotoDayButton.dataset.gotoDay); }
     const billPaidButton = event.target.closest('[data-bill-paid]');
     if (billPaidButton) markBillPaid(billPaidButton.dataset.billPaid);
+    const billEditButton = event.target.closest('[data-bill-edit]');
+    if (billEditButton) startBillEdit(billEditButton.dataset.billEdit);
     const billDeleteButton = event.target.closest('[data-bill-delete]');
     if (billDeleteButton) deleteBill(billDeleteButton.dataset.billDelete);
     const dismissButton = event.target.closest('[data-dismiss-finding]');
