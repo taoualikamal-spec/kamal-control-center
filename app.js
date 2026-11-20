@@ -1328,6 +1328,7 @@ function routineFormHtml(item, isNew) {
     <div class="form-row"><label>Starts<input name="start" type="time" required value="${item.start}"></label><label>Ends <span class="optional">you can skip this</span><input name="end" type="time" value="${item.end}"></label></div>
     <div><p class="chip-label">Which days</p><div class="day-chips">${dayChecks}</div></div>
     <label>Or once a month, on day <span class="optional">1–28, leave empty for the days above</span><input name="monthDay" type="number" inputmode="numeric" min="0" max="28" step="1" value="${item.monthDay || ''}"></label>
+    <label class="check-row"><input type="checkbox" name="earns" ${item.earns ? 'checked' : ''}><span>This brings in money<small>Work that pays. It shows first on the Overview.</small></span></label>
     <label>Open in the app<select name="page">${pages.map(([value, label]) => `<option value="${value}" ${item.page === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
     <label>Note <span class="optional">shows in the reminder</span><input name="note" maxlength="300" value="${escapeHtml(item.note)}"></label>
     <div class="routine-form-actions"><button class="secondary-button" type="submit">${isNew ? 'Add to the routine' : 'Save'}</button>${isNew ? '' : `<button class="delete-text" type="button" data-routine-delete="${item.id}">Remove</button>`}</div>
@@ -1395,7 +1396,8 @@ function readRoutineForm(form) {
     days,
     monthDay: Math.min(28, Math.max(0, Math.round(Number(form.elements.monthDay.value) || 0))),
     page: form.elements.page.value,
-    note: form.elements.note.value.trim()
+    note: form.elements.note.value.trim(),
+    earns: Boolean(form.elements.earns && form.elements.earns.checked)
   };
 }
 
@@ -2481,46 +2483,44 @@ function renderSettings() {
    and up to two after it. Below that, the same facts the other pages hold,
    each card opening the page where you act. Nothing is entered here. */
 
-// The things worth doing, most pressing first. Each one is a verb.
-function overviewSteps(asOf = today()) {
-  const steps = [];
-  const home = state.home.target ? homeSummary(asOf) : null;
-  const unpaid = unpaidBills(asOf);
-  const due = unpaid.filter(item => daysUntil(item.due, asOf) <= 0);
-  const soon = unpaid.filter(item => { const days = daysUntil(item.due, asOf); return days > 0 && days <= BILL_SOON_DAYS; });
+/* What brings money in, first. Payments are facts further down the page;
+   the top of it is the work that solves them. Reads the routine items marked
+   "this brings in money" and the hours logged on Home. */
+function overviewEarning(asOf = today(), clock = clockInZone(new Date())) {
+  const now = routineMinutes(clock);
+  const blocksOn = date => dayPlan(state.routine, date).filter(row => row.earns).sort((x, y) => routineMinutes(x.start) - routineMinutes(y.start));
+  const hoursOf = row => (row.end && routineMinutes(row.end) > routineMinutes(row.start) ? (routineMinutes(row.end) - routineMinutes(row.start)) / 60 : 0);
+  const todayBlocks = blocksOn(asOf);
+  const current = todayBlocks.find(row => routineMinutes(row.start) <= now && row.end && now < routineMinutes(row.end)) || null;
+  const upcoming = todayBlocks.filter(row => routineMinutes(row.start) > now);
 
-  if (home && home.ready > 0 && daysUntil(home.dueDate, asOf) <= 0) {
-    steps.push({ kind: 'home', text: `Give ${money(home.ready)} at home`, detail: 'Then tap "I sent it home" so the month counts.', tab: 'home' });
+  let status = 'none', block = null, date = asOf;
+  if (current) { status = 'now'; block = current; }
+  else if (upcoming.length) { status = 'next'; block = upcoming[0]; }
+  else {
+    for (let ahead = 1; ahead <= 7 && !block; ahead++) {
+      const day = shiftDate(asOf, ahead);
+      const first = blocksOn(day)[0];
+      if (first) { status = 'later'; block = first; date = day; }
+    }
   }
-  if (due.length) {
-    const first = due[0];
-    steps.push({
-      kind: 'bill', text: `Pay ${first.bill.name}: ${money(first.remaining)}`,
-      detail: `${dueLabel(first.due, asOf)}${due.length > 1 ? ` · ${due.length - 1} more waiting, ${money(sumAmounts(due.map(item => ({ amount: item.remaining }))))} in all` : ''}`,
-      tab: 'month', focus: '#billsList'
-    });
-  }
-  if (soon.length) {
-    const first = soon[0];
-    const total = sumAmounts(soon.map(item => ({ amount: item.remaining })));
-    steps.push({
-      kind: 'soon', text: `Get ready for ${first.bill.name}: ${money(first.remaining)}`,
-      detail: `${dueLabel(first.due, asOf)}${soon.length > 1 ? ` · ${money(total)} to pay in the next ${BILL_SOON_DAYS} days` : ''}. When money comes in, tick it in "Pay these first".`,
-      tab: 'month', focus: '#billsList'
-    });
-  }
-  if (!state.transactions.some(entry => entry.date === asOf)) {
-    steps.push({ kind: 'log', text: "Write down today's money", detail: 'Two minutes. Then your boxes match your pocket.', tab: 'month', focus: '#expenseAmount' });
-  }
-  if (home && !home.covered && home.toSetAside > 0) {
-    steps.push({ kind: 'aside', text: `Set aside for home: ${money(home.toSetAside)} to go`, detail: `For ${homeDueLabel(home.dueDate)}. Each Money in adds its share by itself.`, tab: 'home' });
-  }
-  const payback = paybackSummary();
-  if (payback.next && (!home || home.covered)) {
-    steps.push({ kind: 'payback', text: `Pay back ${payback.next.name}: ${money(paybackLeftOf(payback.next))}`, detail: 'The next person on your list.', tab: 'payback' });
-  }
-  if (!steps.length) steps.push({ kind: 'clear', text: 'Nothing is waiting right now', detail: 'Keep the day simple.', tab: 'day' });
-  return steps;
+
+  const home = state.home.target ? homeSummary(asOf) : null;
+  const rate = home ? home.rate : 0;
+  const loggedToday = homeHours(state.home.hours.filter(item => item.date === asOf).reduce((sum, item) => sum + item.hours, 0));
+  const plannedToday = homeHours(todayBlocks.reduce((sum, row) => sum + hoursOf(row), 0));
+  const blockHours = home ? home.blockHours : 0;
+  const blockDone = home ? Math.min(home.blockDone, blockHours) : 0;
+  return {
+    status, block, date,
+    laterToday: upcoming.filter(row => row !== block),
+    hadWorkToday: todayBlocks.length > 0,
+    loggedToday, plannedToday, rate,
+    plannedValue: Math.round(plannedToday * rate),
+    blockHours, blockDone, hoursToPay: homeHours(Math.max(0, blockHours - blockDone)),
+    payValue: Math.round(blockHours * rate),
+    weekHours: home ? home.weekHours : 0, weeklyHours: home ? home.weeklyHours : 0
+  };
 }
 
 function overviewData(asOf = today()) {
@@ -2529,7 +2529,7 @@ function overviewData(asOf = today()) {
   const home = state.home.target ? homeSummary(asOf) : null;
   const unpaid = unpaidBills(asOf);
   return {
-    steps: overviewSteps(asOf),
+    earning: overviewEarning(asOf),
     boxes,
     total: boxes.reduce((sum, box) => sum + box.balance, 0),
     bills: unpaid.slice(0, 3),
@@ -2554,11 +2554,29 @@ function renderOverview() {
   const data = overviewData(asOf);
   $('#overviewDate').textContent = new Date(`${asOf}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  const [first, ...rest] = data.steps;
-  const after = rest.slice(0, 2);
-  const action = `<button class="panel overview-card overview-action" type="button" data-open-tab="${first.tab}"${first.focus ? ` data-focus="${first.focus}"` : ''}>
-    <span class="overview-card-top"><span class="eyebrow">Do this next</span><span class="overview-arrow" aria-hidden="true">›</span></span>
-    <strong>${escapeHtml(first.text)}</strong><small>${escapeHtml(first.detail)}</small>
+  const e = data.earning;
+  const dayName = e.status === 'later' ? (e.date === shiftDate(asOf, 1) ? 'Tomorrow' : new Date(`${e.date}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long' })) : '';
+  const headline = e.status === 'now' ? `Work now: ${escapeHtml(e.block.title)}`
+    : e.status === 'next' ? `${e.block.start} · ${escapeHtml(e.block.title)}`
+    : e.status === 'later' ? `${dayName} ${e.block.start} · ${escapeHtml(e.block.title)}`
+    : 'Mark what brings in money';
+  const when = e.status === 'now' ? `Until ${e.block.end}. Stay with it.`
+    : e.status === 'next' ? `Next up today${e.block.end ? `, until ${e.block.end}` : ''}.`
+    : e.status === 'later' ? 'Work is done for today. Rest is part of it.'
+    : 'Open your routine, edit your work, and tick "This brings in money". It will lead this page.';
+  const worth = e.plannedToday && e.rate ? `Today's ${e.plannedToday} h ≈ <b>${money(e.plannedValue)}</b>` : '';
+  const toPay = e.blockHours ? `<span class="overview-earn">
+      <span class="overview-earn-line"><span><b>${e.blockDone} of ${e.blockHours} h</b> done</span><span>${e.hoursToPay ? `${e.hoursToPay} h to your next pay` : 'Pay is due'}${e.payValue ? ` · about <b>${money(e.payValue)}</b>` : ''}</span></span>
+      <span class="progress-track"><span class="progress-fill" style="background:var(--green);width:${Math.round(e.blockDone / e.blockHours * 100)}%"></span></span>
+    </span>` : '';
+  const after = [
+    ...e.laterToday.slice(0, 2).map(row => ({ text: `${row.start} · ${row.title}`, tab: 'routine' })),
+    ...(e.hadWorkToday && e.blockHours ? [{ text: e.loggedToday ? `Add to today's hours (${e.loggedToday} h logged)` : "Log today's work hours", tab: 'home', focus: '#homeHoursInput' }] : [])
+  ].slice(0, 3);
+  const action = `<button class="panel overview-card overview-action" type="button" data-open-tab="${e.status === 'none' ? 'routine' : 'home'}"${e.status === 'none' ? '' : ' data-focus="#homeHoursInput"'}>
+    <span class="overview-card-top"><span class="eyebrow">Do this next · it brings in money</span><span class="overview-arrow" aria-hidden="true">›</span></span>
+    <strong>${headline}</strong><small>${when}${worth ? ` ${worth}.` : ''}</small>
+    ${toPay}
   </button>${after.length ? `<div class="overview-after"><p class="chip-label">After that</p>${after.map(step => `<button class="overview-step" type="button" data-open-tab="${step.tab}"${step.focus ? ` data-focus="${step.focus}"` : ''}><span>${escapeHtml(step.text)}</span><span aria-hidden="true">›</span></button>`).join('')}</div>` : ''}`;
 
   const biggest = Math.max(1, ...data.boxes.map(box => Math.abs(box.balance)));

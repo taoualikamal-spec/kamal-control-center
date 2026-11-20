@@ -759,3 +759,8 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .overview-row b { font-size: .92rem; overflow-wrap: anywhere; }
 .overview-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 700px) { .overview { grid-template-columns: 1fr; } }
+
+.overview-earn { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.overview-earn-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-size: .86rem; color: var(--muted); }
+.overview-earn-line b, .overview-action small b { color: var(--text); }
+.overview-earn .progress-track { margin-top: 0; height: 9px; }

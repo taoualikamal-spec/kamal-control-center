@@ -58,7 +58,9 @@ function normalizeRoutine(routine) {
       monthDay: Math.min(28, Math.max(0, Math.round(Number(item.monthDay) || 0))),
       page: ['day', 'month', 'home', 'payback', 'time', 'body'].includes(item.page) ? item.page : '',
       note: String(item.note || '').slice(0, 300),
-      live: item.live || ''
+      live: item.live || '',
+      // The work that pays. Shown first on the Overview. The two work blocks start as yes.
+      earns: item.earns !== undefined ? Boolean(item.earns) : (item.id === 'work1' || item.id === 'work2')
     })).filter(item => item.monthDay || item.days.length),
     prayers: {
       on: Object.fromEntries(PRAYERS.map(p => [p.id, prayersOn[p.id] !== undefined ? Boolean(prayersOn[p.id]) : true])),
@@ -226,7 +228,7 @@ function prayerEvents(routine, fromDate, days = PRAYER_DAYS_AHEAD) {
 // What one day looks like, routine and prayers together, in time order.
 function dayPlan(routine, date) {
   const rows = routine.items.filter(item => routineRunsOn(item, date))
-    .map(item => ({ kind: 'routine', id: item.id, title: item.title, start: item.start, end: item.end, page: item.page }));
+    .map(item => ({ kind: 'routine', id: item.id, title: item.title, start: item.start, end: item.end, page: item.page, earns: Boolean(item.earns) }));
   const times = prayerTimes(date, routine.prayers.lat, routine.prayers.lng);
   PRAYERS.filter(p => routine.prayers.on[p.id]).forEach(p => rows.push({ kind: 'prayer', id: p.id, title: p.name, start: clockInZone(times[p.id]), end: '', page: '' }));
   // The day starts at the wake-up time: anything before it (like 00:30) belongs to the night after.
