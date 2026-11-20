@@ -14,12 +14,13 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <a class="brand" href="#day" aria-label="Up Again home">
+      <a class="brand" href="#overview" aria-label="Up Again home">
         <span class="brand-mark">↑</span>
         <span><strong>Up Again</strong><small>Eternal Victory</small></span>
       </a>
       <div class="top-actions">
         <button class="icon-button rescue-icon" id="rescueButton" title="I want to smoke or use — help me wait" aria-label="I want to smoke or use — help me wait">≈</button>
+        <button class="icon-button" id="settingsButton" type="button" data-open-tab="settings" title="Settings" aria-label="Settings">⚙</button>
         <button class="icon-button" id="themeButton" title="Change colours" aria-label="Change colours">☾</button>
         <button class="icon-button" id="installButton" hidden title="Install app">↓</button>
         <button class="icon-button" id="quickBackupButton" title="Save a backup file">↧</button>
@@ -27,8 +28,16 @@
     </header>
 
     <main>
+      <!-- ============ OVERVIEW ============ -->
+      <section id="overview" class="page active" aria-labelledby="overviewTitle">
+        <div class="page-heading">
+          <div><p class="eyebrow" id="overviewDate"></p><h1 id="overviewTitle">Overview</h1><p class="lede">What to do next, then where you stand.</p></div>
+        </div>
+        <div class="overview" id="overviewCards"></div>
+      </section>
+
       <!-- ============ DAY ============ -->
-      <section id="day" class="page active" aria-labelledby="dayTitle">
+      <section id="day" class="page" aria-labelledby="dayTitle">
         <div class="day-top">
           <div>
             <p class="eyebrow" id="todayLabel"></p>
@@ -621,10 +630,10 @@
     </main>
 
     <nav class="bottom-nav" aria-label="Main menu">
-      <button class="nav-item active" data-tab="day"><span>☀</span>Day</button>
+      <button class="nav-item active" data-tab="overview"><span>◈</span>Overview</button>
+      <button class="nav-item" data-tab="day"><span>☀</span>Day</button>
       <button class="nav-item" data-tab="month"><span>◑</span>Month</button>
       <button class="nav-item" data-tab="year"><span>◎</span>Year</button>
-      <button class="nav-item" data-tab="settings"><span>⚙</span>Settings</button>
     </nav>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

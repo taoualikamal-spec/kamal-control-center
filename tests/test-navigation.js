@@ -36,7 +36,7 @@ function browser(h) {
   h.ctx.registerEvents();          // re-register so hashchange is captured
   const page = () => h.activePages().join();
 
-  check('starts on Day', (h.ctx.showTab('day'), page() === 'day'));
+  check('starts on Overview', (h.ctx.showTab('overview'), page() === 'overview'));
 
   h.ctx.selectTab('month');
   check('moving to Month shows Month', page() === 'month');
@@ -48,7 +48,7 @@ function browser(h) {
   nav.back();
   check('back returns to Month', page() === 'month');
   nav.back();
-  check('back again returns to Day', page() === 'day');
+  check('back again returns to Overview', page() === 'overview');
   nav.forward();
   check('forward goes to Month again', page() === 'month');
 }
@@ -66,7 +66,7 @@ function browser(h) {
   check('inside Time, the Day tab stays lit', h.litTab() === 'day');
 
   h.ctx.selectTab('settings');
-  check('Settings lights its own tab', h.litTab() === 'settings');
+  check('Settings opens from the gear, so no tab is lit', h.activePages().join() === 'settings' && h.litTab() === '');
 }
 
 {
@@ -77,7 +77,7 @@ function browser(h) {
   h.ctx.location.hash = '#year';
   check('a saved address opens that page', h.activePages().join() === 'year');
   h.ctx.location.hash = '#nonsense';
-  check('an address that means nothing falls back to Day', h.ctx.tabFromHash() === 'day');
+  check('an address that means nothing falls back to Overview', h.ctx.tabFromHash() === 'overview');
 }
 
 {
@@ -111,7 +111,9 @@ function browser(h) {
     const end = html.indexOf('<section id="', start + 10);
     return html.slice(start, end === -1 ? undefined : end);
   };
-  const inBar = ['day', 'month', 'year', 'settings'];
+  const inBar = ['overview', 'day', 'month', 'year'];
+  check('Settings is reachable from the top bar', html.slice(0, html.indexOf('<main>')).includes('data-open-tab="settings"'));
+  check('Overview is the first page', html.indexOf('<section id="overview" class="page active"') > 0 && html.indexOf('<section id="overview"') < html.indexOf('<section id="day"'));
   ['time', 'body'].forEach(id => {
     check('the ' + id + ' page has a way back to Day', section(id).includes('data-open-tab="day"'));
   });

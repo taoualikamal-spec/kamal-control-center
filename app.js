@@ -2475,8 +2475,142 @@ function renderSettings() {
   applyTheme();
 }
 
+
+/* ---------- Overview: what to do next, then where you stand ----------
+   The first page. It leads with actions, not problems: one thing to do now
+   and up to two after it. Below that, the same facts the other pages hold,
+   each card opening the page where you act. Nothing is entered here. */
+
+// The things worth doing, most pressing first. Each one is a verb.
+function overviewSteps(asOf = today()) {
+  const steps = [];
+  const home = state.home.target ? homeSummary(asOf) : null;
+  const unpaid = unpaidBills(asOf);
+  const due = unpaid.filter(item => daysUntil(item.due, asOf) <= 0);
+  const soon = unpaid.filter(item => { const days = daysUntil(item.due, asOf); return days > 0 && days <= BILL_SOON_DAYS; });
+
+  if (home && home.ready > 0 && daysUntil(home.dueDate, asOf) <= 0) {
+    steps.push({ kind: 'home', text: `Give ${money(home.ready)} at home`, detail: 'Then tap "I sent it home" so the month counts.', tab: 'home' });
+  }
+  if (due.length) {
+    const first = due[0];
+    steps.push({
+      kind: 'bill', text: `Pay ${first.bill.name}: ${money(first.remaining)}`,
+      detail: `${dueLabel(first.due, asOf)}${due.length > 1 ? ` · ${due.length - 1} more waiting, ${money(sumAmounts(due.map(item => ({ amount: item.remaining }))))} in all` : ''}`,
+      tab: 'month', focus: '#billsList'
+    });
+  }
+  if (soon.length) {
+    const first = soon[0];
+    const total = sumAmounts(soon.map(item => ({ amount: item.remaining })));
+    steps.push({
+      kind: 'soon', text: `Get ready for ${first.bill.name}: ${money(first.remaining)}`,
+      detail: `${dueLabel(first.due, asOf)}${soon.length > 1 ? ` · ${money(total)} to pay in the next ${BILL_SOON_DAYS} days` : ''}. When money comes in, tick it in "Pay these first".`,
+      tab: 'month', focus: '#billsList'
+    });
+  }
+  if (!state.transactions.some(entry => entry.date === asOf)) {
+    steps.push({ kind: 'log', text: "Write down today's money", detail: 'Two minutes. Then your boxes match your pocket.', tab: 'month', focus: '#expenseAmount' });
+  }
+  if (home && !home.covered && home.toSetAside > 0) {
+    steps.push({ kind: 'aside', text: `Set aside for home: ${money(home.toSetAside)} to go`, detail: `For ${homeDueLabel(home.dueDate)}. Each Money in adds its share by itself.`, tab: 'home' });
+  }
+  const payback = paybackSummary();
+  if (payback.next && (!home || home.covered)) {
+    steps.push({ kind: 'payback', text: `Pay back ${payback.next.name}: ${money(paybackLeftOf(payback.next))}`, detail: 'The next person on your list.', tab: 'payback' });
+  }
+  if (!steps.length) steps.push({ kind: 'clear', text: 'Nothing is waiting right now', detail: 'Keep the day simple.', tab: 'day' });
+  return steps;
+}
+
+function overviewData(asOf = today()) {
+  const metrics = envelopeMetrics(asOf);
+  const boxes = state.settings.envelopes.map(envelope => ({ id: envelope.id, name: envelope.name, color: envelope.color, balance: metrics[envelope.id].balance }));
+  const home = state.home.target ? homeSummary(asOf) : null;
+  const unpaid = unpaidBills(asOf);
+  return {
+    steps: overviewSteps(asOf),
+    boxes,
+    total: boxes.reduce((sum, box) => sum + box.balance, 0),
+    bills: unpaid.slice(0, 3),
+    billsCount: unpaid.length,
+    billsTotal: unpaid.reduce((sum, item) => sum + item.remaining, 0),
+    home,
+    payback: paybackSummary()
+  };
+}
+
+function overviewCard(tab, label, body, focus) {
+  return `<button class="panel overview-card" type="button" data-open-tab="${tab}"${focus ? ` data-focus="${focus}"` : ''}>
+    <span class="overview-card-top"><span class="eyebrow">${label}</span><span class="overview-arrow" aria-hidden="true">›</span></span>
+    ${body}
+  </button>`;
+}
+
+function renderOverview() {
+  const root = $('#overviewCards');
+  if (!root) return;
+  const asOf = today();
+  const data = overviewData(asOf);
+  $('#overviewDate').textContent = new Date(`${asOf}T12:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const [first, ...rest] = data.steps;
+  const after = rest.slice(0, 2);
+  const action = `<button class="panel overview-card overview-action" type="button" data-open-tab="${first.tab}"${first.focus ? ` data-focus="${first.focus}"` : ''}>
+    <span class="overview-card-top"><span class="eyebrow">Do this next</span><span class="overview-arrow" aria-hidden="true">›</span></span>
+    <strong>${escapeHtml(first.text)}</strong><small>${escapeHtml(first.detail)}</small>
+  </button>${after.length ? `<div class="overview-after"><p class="chip-label">After that</p>${after.map(step => `<button class="overview-step" type="button" data-open-tab="${step.tab}"${step.focus ? ` data-focus="${step.focus}"` : ''}><span>${escapeHtml(step.text)}</span><span aria-hidden="true">›</span></button>`).join('')}</div>` : ''}`;
+
+  const biggest = Math.max(1, ...data.boxes.map(box => Math.abs(box.balance)));
+  const moneyCard = overviewCard('month', 'Money I have', `<strong>${money(data.total)}</strong>
+    <span class="overview-boxes">${data.boxes.map(box => `<span class="overview-box ${box.balance < 0 ? 'below' : ''}">
+      <span class="overview-box-name">${escapeHtml(box.name)}</span><span class="overview-box-amount">${money(box.balance)}</span>
+      <span class="progress-track"><span class="progress-fill" style="background:${box.color};width:${Math.round(Math.abs(box.balance) / biggest * 100)}%"></span></span>
+    </span>`).join('')}</span>
+    <small>${data.boxes.some(box => box.balance < 0) ? 'A box below zero has borrowed from the others. It fills back up as money comes in.' : 'This should be the money you really have.'}</small>`, '#boxesTotal');
+
+  const billsCard = overviewCard('month', 'Coming up', data.bills.length
+    ? `<span class="overview-list">${data.bills.map(item => `<span class="overview-row"><span><b>${escapeHtml(item.bill.name)}</b><small>${dueLabel(item.due, asOf)}</small></span><span class="overview-amount">${money(item.remaining)}</span></span>`).join('')}</span>
+       <small>${data.billsCount > data.bills.length ? `${data.billsCount - data.bills.length} more after these · ` : ''}${money(data.billsTotal)} to pay in all</small>`
+    : `<strong>Nothing to pay</strong><small>${state.bills.length ? 'Everything is paid for now.' : 'Add your bills under Still to pay, and they show up here.'}</small>`, '#billsList');
+
+  const home = data.home;
+  const homeCard = overviewCard('home', 'Home first', home
+    ? `<strong>${money(home.ready)} ready of ${money(home.need)}</strong>
+       <span class="progress-track"><span class="progress-fill" style="background:var(--family);width:${home.need ? Math.round(home.ready / home.need * 100) : 100}%"></span></span>
+       <small>${home.covered ? `Set aside for ${homeDueLabel(home.dueDate)}.` : `For ${homeDueLabel(home.dueDate)} · ${money(home.toSetAside)} still to set aside`}${home.buffer ? ` · ${money(home.buffer)} kept for the month after` : ''}</small>`
+    : '<strong>Not set yet</strong><small>Choose what goes home every month, and it comes first.</small>');
+
+  const pb = data.payback;
+  const paybackCard = overviewCard('payback', 'Pay back', pb.people
+    ? `<strong>${pb.next ? `Next: ${escapeHtml(pb.next.name)}` : 'Everyone is paid'}</strong>
+       <span class="progress-track"><span class="progress-fill" style="background:var(--debt);width:${pb.total ? Math.round(pb.paidAmount / pb.total * 100) : 0}%"></span></span>
+       <small>${pb.paidCount} of ${pb.people} paid · ${money(pb.left)} left${pb.next ? ` · ${money(paybackLeftOf(pb.next))} for ${escapeHtml(pb.next.name)}` : ''}</small>`
+    : '<strong>No one on the list</strong><small>Add the people you owe, smallest first.</small>');
+
+  const now = routineNow(asOf);
+  const todayCard = overviewCard('day', 'Today', `<strong>${now.next ? `${now.next.start} · ${escapeHtml(now.next.title)}` : 'The day is done'}</strong>
+    <small>${now.after ? `Then ${escapeHtml(now.after.title)} at ${now.after.start}` : now.next ? 'The last thing for today.' : 'Tomorrow starts at the same time.'}${home && home.weeklyHours ? ` · ${home.weekHours} of ${home.weeklyHours} h of work this week` : ''}</small>`);
+
+  root.innerHTML = action + moneyCard + billsCard + homeCard + paybackCard + todayCard;
+}
+
+function handleOverviewClick(event) {
+  const button = event.target.closest('[data-open-tab]');
+  if (!button) return;
+  selectTab(button.dataset.openTab);
+  if (!button.dataset.focus) return;
+  const target = $(button.dataset.focus);
+  if (!target) return;
+  setTimeout(() => {
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (typeof target.focus === 'function' && /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName || '')) target.focus({ preventScroll: true });
+  }, 80);
+}
+
 function renderAll() {
   renderHeader();
+  renderOverview();
   renderDay();
   renderMonth();
   renderYear();
@@ -2871,7 +3005,7 @@ function deleteCraving(id) {
    Every move is a real history entry, so the phone's back button goes back
    through the app instead of leaving it. The address also names the page,
    so a refresh stays put. */
-const TABS = ['day', 'month', 'year', 'time', 'body', 'routine', 'home', 'payback', 'settings'];
+const TABS = ['overview', 'day', 'month', 'year', 'time', 'body', 'routine', 'home', 'payback', 'settings'];
 // Time and Waiting are opened from Day, and Home and Pay back from Month. None is its
 // own tab, so the tab they came from stays lit while you are inside them.
 const TAB_PARENT = { time: 'day', body: 'day', routine: 'day', home: 'month', payback: 'month' };
@@ -2879,7 +3013,7 @@ const scrollMemory = {};
 
 function tabFromHash() {
   const name = String(location.hash || '').replace('#', '');
-  return TABS.includes(name) ? name : 'day';
+  return TABS.includes(name) ? name : 'overview';
 }
 
 function activeTab() {
@@ -2893,7 +3027,7 @@ function activeTab() {
    address change then calls this again. Doing the work twice would throw away
    the scroll position it just restored. */
 function showTab(tab) {
-  if (!TABS.includes(tab)) tab = 'day';
+  if (!TABS.includes(tab)) tab = 'overview';
   const previous = activeTab();
   if (previous === tab) return;
   if (previous) scrollMemory[previous] = window.scrollY || 0;
@@ -2904,7 +3038,7 @@ function showTab(tab) {
 }
 
 function selectTab(tab) {
-  if (!TABS.includes(tab)) tab = 'day';
+  if (!TABS.includes(tab)) tab = 'overview';
   if (tabFromHash() !== tab) location.hash = tab;
   showTab(tab);
 }
@@ -2927,6 +3061,7 @@ function registerEvents() {
       if (typeof target.focus === 'function') target.focus({ preventScroll: true });
     }, 80);
   }));
+  $('#overviewCards').addEventListener('click', handleOverviewClick);
   $('#incomeForm').addEventListener('submit', addIncome);
   $('#expenseForm').addEventListener('submit', addExpense);
   $('#timeForm').addEventListener('submit', addTimeEntry);

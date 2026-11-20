@@ -727,3 +727,35 @@ input[type="range"] { padding: 0; background: transparent; border: 0; min-height
 .boxes-total small { grid-column: 1 / -1; color: var(--quiet); font-size: .76rem; }
 .row-edit, .row-delete { min-height: 34px; padding: 5px 8px; font-size: .8rem; }
 .row-delete { color: var(--quiet); }
+
+/* Overview */
+.overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.overview-card { display: flex; flex-direction: column; gap: 8px; width: 100%; margin: 0; text-align: left; color: var(--text); cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
+.overview-card:hover { border-color: var(--blue); transform: translateY(-1px); }
+.overview-card-top { display: flex; align-items: center; justify-content: space-between; }
+.overview-arrow { color: var(--quiet); font-size: 1.3rem; line-height: 1; }
+.overview-card strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.overview-card small { color: var(--muted); font-size: .8rem; line-height: 1.4; }
+.overview-card .progress-track { display: block; }
+.overview-card .progress-fill { display: block; height: 100%; border-radius: inherit; }
+.overview-action { grid-column: 1 / -1; border-color: var(--green); background: var(--surface-2); padding-block: 18px; }
+.overview-action .eyebrow, .overview-action .overview-arrow { color: var(--green); }
+.overview-action strong { font-size: 1.4rem; line-height: 1.25; }
+.overview-action small { font-size: .88rem; }
+.overview-after { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; margin: -2px 0 6px; }
+.overview-after .chip-label { margin: 0 0 2px; }
+.overview-step { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); color: var(--text); font-size: .88rem; text-align: left; cursor: pointer; }
+.overview-step:hover { border-color: var(--green); }
+.overview-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.overview-box { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; align-items: baseline; }
+.overview-box-name { color: var(--muted); font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overview-box-amount { font-size: .86rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.overview-box .progress-track { grid-column: 1 / -1; height: 5px; }
+.overview-box.below .overview-box-amount { color: var(--muted); }
+.overview-box.below .progress-fill { opacity: .35; }
+.overview-list { display: flex; flex-direction: column; gap: 8px; }
+.overview-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.overview-row > span:first-child { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.overview-row b { font-size: .92rem; overflow-wrap: anywhere; }
+.overview-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 700px) { .overview { grid-template-columns: 1fr; } }
