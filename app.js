@@ -607,6 +607,13 @@ function envelopeMetrics(dateKey = today()) {
       metrics[entry.envelopeId].balance -= Number(entry.amount);
       if (thisMonth) metrics[entry.envelopeId].spent += Number(entry.amount); else metrics[entry.envelopeId].carried -= Number(entry.amount);
     }
+    if (entry.type === 'move') {
+      [[entry.fromEnvelopeId, -1], [entry.toEnvelopeId, 1]].forEach(([id, sign]) => {
+        if (!metrics[id]) return;
+        metrics[id].balance += sign * Number(entry.amount);
+        if (thisMonth) metrics[id].moved = (metrics[id].moved || 0) + sign * Number(entry.amount); else metrics[id].carried += sign * Number(entry.amount);
+      });
+    }
   });
   return metrics;
 }
@@ -1047,6 +1054,27 @@ function homeSpentFromBox(home = state.home) {
   return state.transactions.filter(entry => entry.type === 'expense' && entry.envelopeId === box && entry.date >= home.startedOn && !entry.fromIncomeId && !entry.homeMoveId);
 }
 
+// Money moved between boxes: into the home box adds to what is set aside,
+// out of it takes away. Positive means more for home.
+function homeMoved(home = state.home) {
+  const box = homeEnvelopeId();
+  if (!box || !home.target || !home.startedOn) return [];
+  return state.transactions
+    .filter(entry => entry.type === 'move' && entry.date >= home.startedOn && (entry.fromEnvelopeId === box) !== (entry.toEnvelopeId === box))
+    .map(entry => ({ id: entry.id, date: entry.date, amount: entry.toEnvelopeId === box ? Number(entry.amount) : -Number(entry.amount), other: entry.toEnvelopeId === box ? entry.fromEnvelopeId : entry.toEnvelopeId }));
+}
+
+/* Moves money from one box to another. Nothing is earned or spent: it says
+   what the money is really for now. Returns the entry, or null. */
+function moveBetweenBoxes(fromId, toId, amount, date = today()) {
+  const value = Math.round(Number(amount || 0));
+  const ids = state.settings.envelopes.map(envelope => envelope.id);
+  if (!(value > 0) || fromId === toId || !ids.includes(fromId) || !ids.includes(toId)) return null;
+  const entry = { id: makeId(), type: 'move', amount: value, date, fromEnvelopeId: fromId, toEnvelopeId: toId, createdAt: new Date().toISOString() };
+  state.transactions.push(entry);
+  return entry;
+}
+
 // Paychecks that close a block of hours: marked on Money in (older ones were
 // logged on the Home page itself).
 function homePayouts(home = state.home) {
@@ -1082,7 +1110,7 @@ function homeSummary(asOf = today()) {
   const dueMonth = thisMonth >= since && !homeMonthClosed(thisMonth) ? thisMonth : shiftMonth(thisMonth, 1);
   const asideTotal = sumAmounts(home.moves.filter(item => item.kind === 'aside')) + sumAmounts(homeIncomeShares());
   const sentTotal = sumAmounts(home.moves.filter(item => item.kind === 'sent'));
-  const balance = asideTotal - sentTotal - sumAmounts(homeSpentFromBox());
+  const balance = asideTotal - sentTotal - sumAmounts(homeSpentFromBox()) + sumAmounts(homeMoved());
   const need = Math.max(0, target - homeSentFor(dueMonth));
   const ready = Math.min(Math.max(balance, 0), need);
   const buffer = Math.min(Math.max(balance - need, 0), target);
@@ -1163,6 +1191,7 @@ function homeActivity(limit = 12) {
     ...home.payouts.map(item => ({ ...item, type: 'payout', text: `Paid for ${home.blockHours} h: ${money(item.amount)}` })),
     ...homeIncomeShares(home).map(item => ({ ...item, type: 'income', fixed: true, text: `From Money in ${money(item.income)}: ${money(item.amount)} to home${item.closesBlock ? ` · paid ${home.blockHours} h` : ''}` })),
     ...homeSpentFromBox(home).map(item => ({ id: item.id, date: item.date, type: 'spent', fixed: true, fixedWhere: 'Money out', text: `Paid from home money: ${item.note || 'expense'} ${money(item.amount)}` })),
+    ...homeMoved(home).map(item => ({ id: item.id, date: item.date, type: 'boxmove', fixed: true, fixedWhere: 'Money', text: item.amount > 0 ? `Moved in from ${envelopeName(item.other)}: ${money(item.amount)}` : `Moved to ${envelopeName(item.other)}: ${money(-item.amount)}` })),
     ...home.moves.map(item => ({ ...item, type: 'move', text: item.kind === 'sent' ? `Sent home: ${money(item.amount)} (for ${homeMonthLabel(item.month)})` : `Set aside for home: ${money(item.amount)}` }))
   ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
 }
@@ -1688,6 +1717,7 @@ function renderEnvelopes(dateKey = today()) {
     const progress = target ? Math.min(100, Math.max(0, metric.balance / target * 100)) : 0;
     let caption = target ? `Goal: ${money(target)}` : `${money(metric.funded)} put in this month`;
     if (metric.carried) caption += ` · ${money(metric.carried)} from before`;
+    if (metric.moved) caption += ` · ${money(Math.abs(metric.moved))} moved ${metric.moved > 0 ? 'in' : 'out'}`;
     if (envelope.id === 'debt') caption = `${money(debtPaidTotal())} paid back, of ${money(state.settings.debtTotal)} owed`;
     return `<article class="envelope-card" style="--card-color:${envelope.color}">
       <div class="card-top"><span>${escapeHtml(envelope.name)}</span><span class="card-icon">${envelopeIcons[envelope.id] || '•'}</span></div>
@@ -1698,6 +1728,13 @@ function renderEnvelopes(dateKey = today()) {
   }).join('');
   const total = Object.values(metrics).reduce((sum, metric) => sum + metric.balance, 0);
   $('#boxesTotal').innerHTML = `<span>All your boxes together</span><strong>${money(total)}</strong><small>This should be the money you really have, in your hand and in your account. If it is not, something was not written down.</small>`;
+  ['#moveFrom', '#moveTo'].forEach((selector, index) => {
+    const select = $(selector);
+    const chosen = select.value;
+    select.innerHTML = state.settings.envelopes.map(envelope => `<option value="${envelope.id}">${escapeHtml(envelope.name)} (${money(metrics[envelope.id].balance)})</option>`).join('');
+    const fallback = state.settings.envelopes[index] || state.settings.envelopes[0];
+    select.value = state.settings.envelopes.some(envelope => envelope.id === chosen) ? chosen : fallback ? fallback.id : '';
+  });
   $('#expenseEnvelope').innerHTML = state.settings.envelopes.map(envelope => `<option value="${envelope.id}">${escapeHtml(envelope.name)}</option>`).join('');
 }
 
@@ -1895,6 +1932,18 @@ function addBill(event) {
   toast(`${name} added. When money comes in, it can be paid first.`);
 }
 
+function submitBoxMove(event) {
+  event.preventDefault();
+  const from = $('#moveFrom').value;
+  const to = $('#moveTo').value;
+  if (from === to) { toast('Choose two different boxes.'); return; }
+  const entry = moveBetweenBoxes(from, to, $('#moveAmount').value);
+  if (!entry) { toast('Type how much to move.'); return; }
+  $('#moveAmount').value = '';
+  saveState(); renderAll();
+  toast(`${money(entry.amount)} moved from ${envelopeName(from)} to ${envelopeName(to)}. Your total did not change.`);
+}
+
 function deleteBill(id) {
   if (editingBillId === id) cancelBillEdit();
   const bill = state.bills.find(item => item.id === id);
@@ -2069,6 +2118,9 @@ function renderTransactions() {
   $('#clearMonthFilter').textContent = currentTransactionFilter === 'month' ? 'Show all' : 'This month';
   $('#moneyLogSummary').textContent = entries.length ? `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}` : 'nothing yet';
   $('#transactionRows').innerHTML = entries.length ? entries.map(entry => {
+    if (entry.type === 'move') {
+      return `<tr><td>${dateLabel(entry.date)}</td><td><strong>Moved between boxes</strong><br><small>Nothing earned or spent</small></td><td>${escapeHtml(envelopeName(entry.fromEnvelopeId))} → ${escapeHtml(envelopeName(entry.toEnvelopeId))}</td><td class="number">${money(entry.amount)}</td><td class="row-actions"><button class="text-button row-delete" data-delete-transaction="${entry.id}" aria-label="Undo this move">Undo</button></td></tr>`;
+    }
     const isIncome = entry.type === 'income';
     const envelope = state.settings.envelopes.find(item => item.id === entry.envelopeId);
     const description = isIncome ? `<strong>${escapeHtml(entry.source)}</strong><br><small>${escapeHtml(entry.note || 'Money in')}</small>` : `<strong>${escapeHtml(entry.note)}</strong><br><small>${escapeHtml(envelope?.name || 'Money box removed')}</small>`;
@@ -3141,6 +3193,7 @@ function registerEvents() {
   $('#addHabitButton').addEventListener('click', addHabit);
   $('#addSubstanceButton').addEventListener('click', addSubstance);
   $('#billForm').addEventListener('submit', addBill);
+  $('#boxMoveForm').addEventListener('submit', submitBoxMove);
   $('#cancelBillEdit').addEventListener('click', cancelBillEdit);
   $('#payFirstList').addEventListener('input', syncPayPicksFromForm);
   $('#payFirstList').addEventListener('change', syncPayPicksFromForm);
@@ -3204,7 +3257,7 @@ function registerEvents() {
     }
     if (removeSubstanceButton) removeSubstance(removeSubstanceButton.dataset.removeSubstance);
     if (deleteCravingButton) deleteCraving(deleteCravingButton.dataset.deleteCraving);
-    if (transactionButton && confirm('Delete this line? Bills it paid become unpaid again.')) deleteTransaction(transactionButton.dataset.deleteTransaction);
+    if (transactionButton && confirm(transactionButton.textContent === 'Undo' ? 'Undo this move? The money goes back to the box it came from.' : 'Delete this line? Bills it paid become unpaid again.')) deleteTransaction(transactionButton.dataset.deleteTransaction);
     if (timeButton) deleteTime(timeButton.dataset.deleteTime);
     if (editTransactionButton) editTransaction(editTransactionButton.dataset.editTransaction);
     if (editTimeButton) editTimeEntry(editTimeButton.dataset.editTime);

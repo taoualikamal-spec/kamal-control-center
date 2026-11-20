@@ -233,6 +233,18 @@
         <div class="boxes-total" id="boxesTotal" aria-live="polite"></div>
         <section class="envelope-grid" id="moneyEnvelopes" aria-label="Money boxes"></section>
 
+        <details class="panel fold box-move">
+          <summary><span>Move money between boxes</span><small>when a box does not match what the money is really for</small></summary>
+          <div class="fold-body">
+            <form id="boxMoveForm" class="form-stack">
+              <div class="form-row"><label>From<select id="moveFrom" required></select></label><label>To<select id="moveTo" required></select></label></div>
+              <label>How much? (MAD)<input id="moveAmount" type="number" inputmode="decimal" min="1" step="1" required placeholder="200"></label>
+              <p class="small-note">Nothing is earned or spent, so your total stays the same. Use it to bring a box that is below zero back up, or to say honestly that money set aside for one thing is needed for another. You can undo a move in the list below.</p>
+              <button class="secondary-button full-width" type="submit">Move it</button>
+            </form>
+          </div>
+        </details>
+
         <details class="panel fold log-fold">
           <summary><span>All money this month</span><small id="moneyLogSummary"></small></summary>
           <div class="fold-body">

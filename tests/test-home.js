@@ -84,6 +84,34 @@ function moneyIn(h, amount, date, closesBlock = false) {
 }
 
 {
+  // Moving money between boxes: nothing earned or spent, and Home follows its box.
+  const h = load();
+  const c = h.ctx;
+  h.api.state.settings.boxesSince = '2026-11-01';
+  c.setHomeSettings({ target: 7100 }, '2026-11-17');
+  moneyIn(h, 2500, '2026-11-18');
+  h.api.state.transactions.push({ id: 'ob', type: 'expense', amount: 600, date: '2026-11-18', envelopeId: 'debt', note: 'Paid back' });
+  const total = () => Object.values(c.envelopeMetrics('2026-11-20')).reduce((sum, m) => sum + m.balance, 0);
+  const before = total();
+  check('a move needs two different boxes and an amount', c.moveBetweenBoxes('family', 'family', 100, '2026-11-20') === null && c.moveBetweenBoxes('family', 'personal', 0, '2026-11-20') === null);
+  c.moveBetweenBoxes('family', 'debt', 225, '2026-11-20');
+  c.moveBetweenBoxes('family', 'personal', 700, '2026-11-20');
+  const m = c.envelopeMetrics('2026-11-20');
+  check('the boxes change', m.family.balance === 575 && m.debt.balance === 0 && m.personal.balance === 1200);
+  check('the total does not', total() === before);
+  check('a move is not money in or money spent', m.personal.funded === 500 && m.family.spent === 0);
+  check('Home shows what is really left for home', c.homeSummary('2026-11-20').ready === 575);
+  check('and lists the moves', c.homeActivity().filter(item => item.type === 'boxmove').length === 2);
+  const back = c.moveBetweenBoxes('personal', 'family', 100, '2026-11-21');
+  check('moving money back into home adds to it', c.homeSummary('2026-11-21').ready === 675);
+  c.deleteTransaction(back.id);
+  check('undoing a move puts it back', c.homeSummary('2026-11-21').ready === 575);
+  check('next month carries the moved amounts', c.envelopeMetrics('2026-12-02').family.balance === 575);
+  c.renderTransactions();
+  check('the money list shows a move with Undo', h.getEl('#transactionRows').innerHTML.includes('Moved between boxes') && h.getEl('#transactionRows').innerHTML.includes('>Undo<'));
+}
+
+{
   // Home bills paid with money already set aside come out of what is ready.
   const h = load();
   const c = h.ctx;
