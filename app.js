@@ -115,6 +115,9 @@ function normalizeSettings(settings) {
   settings.dailyFocusTarget = Math.max(0, Number(settings.dailyFocusTarget ?? 120));
   settings.keepForLiving = Math.max(0, Number(settings.keepForLiving ?? 0));
   settings.wakeTarget = String(settings.wakeTarget || '');
+  // What is left in a box carries into the next month from this day on. Months
+  // before it were counted one by one and stay as they were.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(settings.boxesSince || ''))) settings.boxesSince = `${new Date().toISOString().slice(0, 7)}-01`;
   upgradeWording(settings);
   return settings;
 }
@@ -584,16 +587,25 @@ function entriesForMonth(entries, dateKey = today()) {
 }
 
 function envelopeMetrics(dateKey = today()) {
-  const metrics = Object.fromEntries(state.settings.envelopes.map(envelope => [envelope.id, { funded: 0, spent: 0, balance: 0 }]));
-  entriesForMonth(state.transactions, dateKey).forEach(entry => {
+  const metrics = Object.fromEntries(state.settings.envelopes.map(envelope => [envelope.id, { funded: 0, spent: 0, balance: 0, carried: 0 }]));
+  const month = String(dateKey).slice(0, 7);
+  const since = state.settings.boxesSince || `${month}-01`;
+  state.transactions.forEach(entry => {
+    const entryMonth = String(entry.date).slice(0, 7);
+    const thisMonth = entryMonth === month;
+    // Left over (or owed) from earlier months, so a box is what you really hold.
+    const before = !thisMonth && entryMonth < month && entry.date >= since;
+    if (!thisMonth && !before) return;
     if (entry.type === 'income') {
       Object.entries(entry.allocations || {}).forEach(([id, amount]) => {
-        if (metrics[id]) { metrics[id].funded += Number(amount); metrics[id].balance += Number(amount); }
+        if (!metrics[id]) return;
+        metrics[id].balance += Number(amount);
+        if (thisMonth) metrics[id].funded += Number(amount); else metrics[id].carried += Number(amount);
       });
     }
     if (entry.type === 'expense' && metrics[entry.envelopeId]) {
-      metrics[entry.envelopeId].spent += Number(entry.amount);
       metrics[entry.envelopeId].balance -= Number(entry.amount);
+      if (thisMonth) metrics[entry.envelopeId].spent += Number(entry.amount); else metrics[entry.envelopeId].carried -= Number(entry.amount);
     }
   });
   return metrics;
@@ -1673,6 +1685,7 @@ function renderEnvelopes(dateKey = today()) {
     const target = Number(envelope.target || 0);
     const progress = target ? Math.min(100, Math.max(0, metric.balance / target * 100)) : 0;
     let caption = target ? `Goal: ${money(target)}` : `${money(metric.funded)} put in this month`;
+    if (metric.carried) caption += ` · ${money(metric.carried)} from before`;
     if (envelope.id === 'debt') caption = `${money(debtPaidTotal())} paid back, of ${money(state.settings.debtTotal)} owed`;
     return `<article class="envelope-card" style="--card-color:${envelope.color}">
       <div class="card-top"><span>${escapeHtml(envelope.name)}</span><span class="card-icon">${envelopeIcons[envelope.id] || '•'}</span></div>
@@ -1681,6 +1694,8 @@ function renderEnvelopes(dateKey = today()) {
       <span class="card-caption">${money(metric.spent)} spent from this box</span>
     </article>`;
   }).join('');
+  const total = Object.values(metrics).reduce((sum, metric) => sum + metric.balance, 0);
+  $('#boxesTotal').innerHTML = `<span>All your boxes together</span><strong>${money(total)}</strong><small>This should be the money you really have, in your hand and in your account. If it is not, something was not written down.</small>`;
   $('#expenseEnvelope').innerHTML = state.settings.envelopes.map(envelope => `<option value="${envelope.id}">${escapeHtml(envelope.name)}</option>`).join('');
 }
 
@@ -2059,7 +2074,7 @@ function renderTransactions() {
     const allocation = isIncome
       ? (paidFirst ? `Paid bills first ${money(paidFirst)} · split ${money(entry.amount - paidFirst)}` : Object.entries(entry.allocations || {}).map(([id, amount]) => `${state.settings.envelopes.find(item => item.id === id)?.percent || 0}% ${money(amount)}`).join(' · '))
       : `${escapeHtml(envelope?.name || '')}${entry.billId ? ' · bill' : ''}`;
-    return `<tr><td>${dateLabel(entry.date)}</td><td>${description}</td><td>${allocation}</td><td class="number ${isIncome ? 'positive' : 'negative'}">${isIncome ? '+' : '−'}${money(entry.amount)}</td><td class="row-actions"><button class="icon-action" data-edit-transaction="${entry.id}" title="Change this" aria-label="Change this">✎</button><button class="delete-button" data-delete-transaction="${entry.id}" title="Delete this" aria-label="Delete this">×</button></td></tr>`;
+    return `<tr><td>${dateLabel(entry.date)}</td><td>${description}</td><td>${allocation}</td><td class="number ${isIncome ? 'positive' : 'negative'}">${isIncome ? '+' : '−'}${money(entry.amount)}</td><td class="row-actions"><button class="text-button row-edit" data-edit-transaction="${entry.id}" aria-label="Change this">Edit</button><button class="text-button row-delete" data-delete-transaction="${entry.id}" aria-label="Delete this">Delete</button></td></tr>`;
   }).join('') : '<tr><td colspan="5" class="empty-row">No money added yet.</td></tr>';
 }
 
@@ -3036,7 +3051,7 @@ function registerEvents() {
     }
     if (removeSubstanceButton) removeSubstance(removeSubstanceButton.dataset.removeSubstance);
     if (deleteCravingButton) deleteCraving(deleteCravingButton.dataset.deleteCraving);
-    if (transactionButton) deleteTransaction(transactionButton.dataset.deleteTransaction);
+    if (transactionButton && confirm('Delete this line? Bills it paid become unpaid again.')) deleteTransaction(transactionButton.dataset.deleteTransaction);
     if (timeButton) deleteTime(timeButton.dataset.deleteTime);
     if (editTransactionButton) editTransaction(editTransactionButton.dataset.editTransaction);
     if (editTimeButton) editTimeEntry(editTimeButton.dataset.editTime);

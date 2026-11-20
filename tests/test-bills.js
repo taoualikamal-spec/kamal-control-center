@@ -198,6 +198,25 @@ function receive(h, amount, source = 'Client') {
   check('the history of payments is untouched', h2.api.state.transactions.filter(t => t.billId === 'rent').length === 1);
 }
 
+// ---------------- boxes carry into the next month ----------------
+{
+  const h = load();
+  const st = h.api.state;
+  st.settings.boxesSince = '2026-11-01';
+  const inc = (id, amount, date) => st.transactions.push({ id, type: 'income', amount, date, source: 'Work', note: '', allocations: h.ctx.splitIncome(amount) });
+  inc('old', 1000, '2026-10-20');
+  inc('nov', 1000, '2026-11-18');
+  st.transactions.push({ id: 'x', type: 'expense', amount: 400, date: '2026-11-19', envelopeId: 'debt', note: 'Paid back' });
+  const nov = h.ctx.envelopeMetrics('2026-11-20');
+  check('this month: a box can go below zero', nov.debt.balance === -250 && nov.family.balance === 600);
+  const dec = h.ctx.envelopeMetrics('2026-12-02');
+  check('next month starts with what was left, also when it is below zero', dec.family.balance === 600 && dec.debt.balance === -250 && dec.debt.carried === -250);
+  check('but "put in this month" and "spent" start again', dec.family.funded === 0 && dec.debt.spent === 0);
+  check('months before the start day are not carried', nov.family.carried === 0 && h.ctx.envelopeMetrics('2026-10-25').family.balance === 600);
+  h.ctx.renderEnvelopes('2026-12-02');
+  check('the boxes show their total', h.getEl('#boxesTotal').innerHTML.includes('600 MAD'));
+}
+
 // ---------------- old data keeps working ----------------
 {
   const seed = {
