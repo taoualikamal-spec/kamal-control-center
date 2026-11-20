@@ -1,4 +1,4 @@
-const CACHE_NAME = 'up-again-v37';
+const CACHE_NAME = 'up-again-v38';
 const ASSETS = ['./', './index.html', './styles.css', './app.js', './insights.js', './routine.js', './google-sync.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', event => {
@@ -23,7 +23,9 @@ self.addEventListener('fetch', event => {
   if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith((async () => {
     try {
-      const response = await fetch(event.request);
+      // Ask the server every time. Without this the browser can hand back a
+      // ten-minute-old app.js next to a new index.html, and half the page breaks.
+      const response = await fetch(event.request.url, { cache: 'no-cache' });
       const cache = await caches.open(CACHE_NAME);
       cache.put(event.request, response.clone());
       return response;
